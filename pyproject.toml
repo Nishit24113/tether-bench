@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tether-bench"
+version = "0.1.0"
+description = "A reproducible benchmark for RAG answer faithfulness"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+# Heavier baselines added in later versions:
+#   nli  -> transformers + torch (entailment-based detector)
+#   llm  -> anthropic (LLM-judge reference)
+nli = ["transformers>=4.40", "torch>=2.0"]
+llm = ["anthropic>=0.40"]
+
+[project.scripts]
+tether = "scripts.run_benchmark:main"
+
+[tool.setuptools.packages.find]
+include = ["tether*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-v --tb=short"
