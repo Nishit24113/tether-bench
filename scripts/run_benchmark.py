@@ -13,7 +13,15 @@ import json
 # Allow running directly (python scripts/run_benchmark.py) without installation
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tether import load_sample, load_jsonl, default_detectors, run_benchmark, format_leaderboard
+from tether import (
+    load_sample,
+    load_jsonl,
+    default_detectors,
+    run_benchmark,
+    format_leaderboard,
+    run_category_breakdown,
+    format_category_breakdown,
+)
 
 
 def main(argv=None):
@@ -31,6 +39,11 @@ def main(argv=None):
 
     print(f"Dataset: {source}\n")
     print(format_leaderboard(benchmark))
+
+    print("\n")
+    breakdowns = run_category_breakdown(detectors, examples)
+    print(format_category_breakdown(breakdowns))
+
     print("\nFull metrics:")
     print(json.dumps(benchmark["results"], indent=2))
     return 0

@@ -28,6 +28,20 @@ class Example:
         """1 if faithful, 0 if hallucinated."""
         return 1 if self.faithful else 0
 
+    @property
+    def error_type(self) -> Optional[str]:
+        """For hallucinated examples: the kind of error (numeric, entity_swap, ...)."""
+        if self.faithful:
+            return None
+        return self.annotations.get("error_type", "unspecified")
+
+    @property
+    def support_type(self) -> Optional[str]:
+        """For faithful examples: how the answer is supported (direct, paraphrase)."""
+        if not self.faithful:
+            return None
+        return self.annotations.get("support_type", "unspecified")
+
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "Example":
         return cls(

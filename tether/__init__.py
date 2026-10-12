@@ -9,7 +9,15 @@ approximate an LLM judge.
 
 from .data import Example, load_jsonl, save_jsonl, load_sample, class_balance
 from .metrics import evaluate, auroc, confusion_matrix, best_threshold, ConfusionMatrix
-from .harness import run_benchmark, run_detector, format_leaderboard, DetectorResult
+from .harness import (
+    run_benchmark,
+    run_detector,
+    format_leaderboard,
+    DetectorResult,
+    category_breakdown,
+    run_category_breakdown,
+    format_category_breakdown,
+)
 from .baselines import (
     Detector,
     MajorityDetector,
@@ -24,6 +32,7 @@ __all__ = [
     "Example", "load_jsonl", "save_jsonl", "load_sample", "class_balance",
     "evaluate", "auroc", "confusion_matrix", "best_threshold", "ConfusionMatrix",
     "run_benchmark", "run_detector", "format_leaderboard", "DetectorResult",
+    "category_breakdown", "run_category_breakdown", "format_category_breakdown",
     "Detector", "MajorityDetector", "LexicalOverlapDetector",
     "NovelTokenDetector", "TfidfCosineDetector",
 ]

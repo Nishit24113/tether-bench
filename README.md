@@ -54,21 +54,53 @@ class is *hallucinated* — the thing we want to catch.
 Planned: `nli_entailment` (local NLI model) and `llm_judge` (Claude) — the
 reference point the cheap detectors are measured against.
 
-## Results on the bundled sample (n=24, balanced)
+## Results on the bundled sample (n=36, balanced)
 
 ```
 detector           cost  auroc   f1      precision  recall  accuracy
 -----------------  ----  ------  ------  ---------  ------  --------
-lexical_overlap    free  0.8958  0.8462  0.7857     0.9167  0.8333
-novel_token        free  0.8958  0.8462  0.7857     0.9167  0.8333
-tfidf_cosine       free  0.8611  0.8462  0.7857     0.9167  0.8333
+novel_token        free  0.9120  0.8500  0.7727     0.9444  0.8333
+lexical_overlap    free  0.8873  0.8293  0.7391     0.9444  0.8056
+tfidf_cosine       free  0.8086  0.8000  0.7273     0.8889  0.7778
 majority_constant  free  0.5000  0.6667  0.5000     1.0000  0.5000
 ```
 
-Even trivial lexical detectors clear the floor by a wide margin on easy cases —
-the open question Tether is built to study is how far that holds as cases get
-harder (hallucinations that reuse context vocabulary, faithful paraphrases that
-share few tokens), and where cheap methods fall short of an LLM judge.
+Even trivial lexical detectors clear the floor by a wide margin on easy cases.
+The interesting question is *where* they fail — which the error-type breakdown
+below answers directly.
+
+## Error-type breakdown
+
+Every hallucinated example is annotated with the kind of error it contains, and
+every faithful one with how it is supported. Tether reports per-category
+**detection recall** — what fraction of each error kind a detector actually
+catches at its F1-optimal threshold:
+
+```
+Detection recall by error type (hallucinated examples)
+
+error_type            majority_constant  lexical_overlap  novel_token  tfidf_cosine
+--------------------  -----------------  ---------------  -----------  ------------
+contradiction         1.00               1.00             1.00         0.75
+entity_swap           1.00               0.80             0.80         1.00
+numeric               1.00               1.00             1.00         0.80
+unsupported_addition  1.00               1.00             1.00         1.00
+```
+
+(`majority_constant` scores 1.00 everywhere only because it flags *everything* as
+hallucinated — its 0.50 AUROC is the honest signal; recall here is a reminder
+that per-category recall must be read alongside false-positive rate.)
+
+The real finding is that the error types that evade cheap detectors are the ones
+where the hallucinated answer **reuses the context's vocabulary**:
+
+- **`entity_swap`** (e.g. "the *liver* produces insulin") slips past token-overlap
+  detectors — only one content word changed, so overlap stays high.
+- **`numeric`** errors (a single wrong digit) and **`contradiction`** are where
+  TF-IDF weakens, since the distinctive terms still match.
+
+Catching exactly these cases is where a semantic NLI model or an LLM judge should
+earn its cost — the comparison the next milestones add.
 
 ## Quickstart
 
@@ -96,9 +128,9 @@ tether/
   metrics.py         # confusion matrix, AUROC (Mann-Whitney), threshold search
   harness.py         # run detectors -> metrics -> ranked leaderboard
   baselines/         # majority, lexical, novel-token, tf-idf
-data/sample.jsonl    # bundled labeled dataset (runs offline)
+data/sample.jsonl    # bundled labeled dataset (runs offline), error-type annotated
 scripts/run_benchmark.py
-tests/               # 38 unit tests
+tests/               # 49 unit tests
 ```
 
 ## Roadmap
@@ -106,8 +138,10 @@ tests/               # 38 unit tests
 - **LLM-judge baseline** (Claude) as the reference detector + agreement analysis
 - **NLI-entailment baseline** (local model) for a mid-cost tier
 - **Larger, harder dataset** with annotated unsupported spans
-- **Cost/accuracy frontier** plot and a per-difficulty breakdown
+- **Cost/accuracy frontier** plot
 - **Paper draft**: benchmark description, baseline analysis, cost/accuracy findings
+
+_Done:_ error-type / support-type annotations and per-category recall breakdown.
 
 ## Reproducibility
 
