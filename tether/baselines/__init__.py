@@ -4,6 +4,7 @@ from .base import Detector, tokenize
 from .majority import MajorityDetector
 from .lexical import LexicalOverlapDetector, NovelTokenDetector
 from .tfidf import TfidfCosineDetector
+from .llm_judge import LLMJudgeDetector, anthropic_judge, parse_verdict
 
 __all__ = [
     "Detector",
@@ -12,4 +13,7 @@ __all__ = [
     "LexicalOverlapDetector",
     "NovelTokenDetector",
     "TfidfCosineDetector",
+    "LLMJudgeDetector",
+    "anthropic_judge",
+    "parse_verdict",
 ]

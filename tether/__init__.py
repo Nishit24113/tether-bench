@@ -24,7 +24,11 @@ from .baselines import (
     LexicalOverlapDetector,
     NovelTokenDetector,
     TfidfCosineDetector,
+    LLMJudgeDetector,
+    anthropic_judge,
+    parse_verdict,
 )
+from .agreement import agreement_rate, cohen_kappa, judge_agreement
 
 __version__ = "0.1.0"
 
@@ -35,6 +39,8 @@ __all__ = [
     "category_breakdown", "run_category_breakdown", "format_category_breakdown",
     "Detector", "MajorityDetector", "LexicalOverlapDetector",
     "NovelTokenDetector", "TfidfCosineDetector",
+    "LLMJudgeDetector", "anthropic_judge", "parse_verdict",
+    "agreement_rate", "cohen_kappa", "judge_agreement",
 ]
 
 

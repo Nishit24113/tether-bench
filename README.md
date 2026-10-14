@@ -50,9 +50,9 @@ class is *hallucinated* — the thing we want to catch.
 | `lexical_overlap` | free | Fraction of answer content tokens present in context |
 | `novel_token` | free | Penalizes answer tokens absent from context *and* question |
 | `tfidf_cosine` | free | TF-IDF cosine similarity between answer and context |
+| `llm_judge` | api | A strong model (default `claude-opus-5-5`) judges faithfulness — the reference the cheap detectors are measured against |
 
-Planned: `nli_entailment` (local NLI model) and `llm_judge` (Claude) — the
-reference point the cheap detectors are measured against.
+Planned: `nli_entailment` (local NLI model) for a mid-cost tier.
 
 ## Results on the bundled sample (n=36, balanced)
 
@@ -102,6 +102,44 @@ where the hallucinated answer **reuses the context's vocabulary**:
 Catching exactly these cases is where a semantic NLI model or an LLM judge should
 earn its cost — the comparison the next milestones add.
 
+## The LLM judge & agreement analysis
+
+The whole point of Tether is to ask *how closely a free detector tracks an
+expensive LLM judge*. The judge is the reference detector; agreement with it is
+the headline metric.
+
+The judge is provider-decoupled — `LLMJudgeDetector` takes any `judge_fn`
+mapping an example to a faithfulness score, so it's trivially mockable and the
+test suite runs offline. The Anthropic-backed judge is opt-in
+(`pip install tether-bench[llm]`, `ANTHROPIC_API_KEY` set):
+
+```python
+from tether import (
+    load_sample, LexicalOverlapDetector, LLMJudgeDetector,
+    anthropic_judge, best_threshold, judge_agreement,
+)
+
+examples = load_sample()
+
+# Reference judge (a strong model). Any callable works; this one calls Claude.
+judge = LLMJudgeDetector(anthropic_judge(model="claude-opus-5-5"))
+judge_scores = judge.score_all(examples)
+
+# A cheap detector at its F1-optimal threshold
+cheap = LexicalOverlapDetector()
+cheap_scores = cheap.score_all(examples)
+labels = [e.label for e in examples]
+thr, _ = best_threshold(labels, cheap_scores)
+
+# How closely does the cheap detector track the judge?
+print(judge_agreement(cheap_scores, judge_scores, cheap_threshold=thr))
+# {'agreement_rate': ..., 'cohen_kappa': ..., 'cheap_only_flags': ..., 'judge_only_flags': ..., ...}
+```
+
+`cohen_kappa` corrects for chance agreement; `judge_only_flags` counts the
+hallucinations the judge caught that the cheap detector missed — exactly the gap
+a paid judge is buying.
+
 ## Quickstart
 
 ```bash
@@ -127,21 +165,23 @@ tether/
   data.py            # Example type + JSONL / sample loaders
   metrics.py         # confusion matrix, AUROC (Mann-Whitney), threshold search
   harness.py         # run detectors -> metrics -> ranked leaderboard
-  baselines/         # majority, lexical, novel-token, tf-idf
+  agreement.py       # agreement rate + Cohen's kappa vs the judge
+  baselines/         # majority, lexical, novel-token, tf-idf, llm-judge
 data/sample.jsonl    # bundled labeled dataset (runs offline), error-type annotated
 scripts/run_benchmark.py
-tests/               # 49 unit tests
+tests/               # 76 unit tests
 ```
 
 ## Roadmap
 
-- **LLM-judge baseline** (Claude) as the reference detector + agreement analysis
 - **NLI-entailment baseline** (local model) for a mid-cost tier
 - **Larger, harder dataset** with annotated unsupported spans
 - **Cost/accuracy frontier** plot
 - **Paper draft**: benchmark description, baseline analysis, cost/accuracy findings
 
-_Done:_ error-type / support-type annotations and per-category recall breakdown.
+_Done:_ error-type / support-type annotations with per-category recall breakdown;
+LLM-judge reference detector (provider-decoupled) + agreement analysis
+(agreement rate, Cohen's kappa).
 
 ## Reproducibility
 
