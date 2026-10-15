@@ -29,6 +29,14 @@ from .baselines import (
     parse_verdict,
 )
 from .agreement import agreement_rate, cohen_kappa, judge_agreement
+from .frontier import (
+    build_frontier,
+    pareto_frontier,
+    format_frontier,
+    frontier_detectors,
+    cost_of,
+    COST_SCORE,
+)
 
 __version__ = "0.1.0"
 
@@ -41,6 +49,8 @@ __all__ = [
     "NovelTokenDetector", "TfidfCosineDetector",
     "LLMJudgeDetector", "anthropic_judge", "parse_verdict",
     "agreement_rate", "cohen_kappa", "judge_agreement",
+    "build_frontier", "pareto_frontier", "format_frontier",
+    "frontier_detectors", "cost_of", "COST_SCORE",
 ]
 
 

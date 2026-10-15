@@ -21,6 +21,8 @@ from tether import (
     format_leaderboard,
     run_category_breakdown,
     format_category_breakdown,
+    build_frontier,
+    format_frontier,
 )
 
 
@@ -43,6 +45,10 @@ def main(argv=None):
     print("\n")
     breakdowns = run_category_breakdown(detectors, examples)
     print(format_category_breakdown(breakdowns))
+
+    print("\n")
+    frontier = build_frontier(benchmark["leaderboard"], metric="auroc")
+    print(format_frontier(frontier))
 
     print("\nFull metrics:")
     print(json.dumps(benchmark["results"], indent=2))

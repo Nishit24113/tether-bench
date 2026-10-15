@@ -140,6 +140,38 @@ print(judge_agreement(cheap_scores, judge_scores, cheap_threshold=thr))
 hallucinations the judge caught that the cheap detector missed — exactly the gap
 a paid judge is buying.
 
+## Cost/accuracy frontier
+
+The benchmark's headline artifact: each detector placed in (cost, quality) space,
+with the Pareto-optimal ones marked. Cost is a relative per-tier score (free
+compute = 0, local model = 0.3, paid API = 1.0) — override `COST_SCORE` with
+measured costs when you have them.
+
+```
+Cost/accuracy frontier (quality = auroc; * = Pareto-optimal)
+
+detector           cost_tier  cost  auroc  frontier
+-----------------  ---------  ----  -----  --------
+novel_token        free       0.00  0.912  *
+lexical_overlap    free       0.00  0.887
+tfidf_cosine       free       0.00  0.809
+majority_constant  free       0.00  0.500
+```
+
+Among the free detectors only `novel_token` is Pareto-optimal — the rest cost
+the same but detect less. Add the `llm_judge` row (cost tier `api`) and it joins
+the frontier at the top: more expensive, but highest quality. The research
+payoff is the shape of that staircase — *how much AUROC each step up the cost
+ladder actually buys.*
+
+```python
+from tether import load_sample, default_detectors, run_benchmark, build_frontier, format_frontier
+
+examples = load_sample()
+bench = run_benchmark(default_detectors(examples), examples)
+print(format_frontier(build_frontier(bench["leaderboard"], metric="auroc")))
+```
+
 ## Quickstart
 
 ```bash
@@ -166,22 +198,22 @@ tether/
   metrics.py         # confusion matrix, AUROC (Mann-Whitney), threshold search
   harness.py         # run detectors -> metrics -> ranked leaderboard
   agreement.py       # agreement rate + Cohen's kappa vs the judge
+  frontier.py        # cost/accuracy Pareto frontier
   baselines/         # majority, lexical, novel-token, tf-idf, llm-judge
 data/sample.jsonl    # bundled labeled dataset (runs offline), error-type annotated
 scripts/run_benchmark.py
-tests/               # 76 unit tests
+tests/               # 90 unit tests
 ```
 
 ## Roadmap
 
-- **NLI-entailment baseline** (local model) for a mid-cost tier
+- **NLI-entailment baseline** (local model) to populate the mid-cost tier
 - **Larger, harder dataset** with annotated unsupported spans
-- **Cost/accuracy frontier** plot
 - **Paper draft**: benchmark description, baseline analysis, cost/accuracy findings
 
 _Done:_ error-type / support-type annotations with per-category recall breakdown;
 LLM-judge reference detector (provider-decoupled) + agreement analysis
-(agreement rate, Cohen's kappa).
+(agreement rate, Cohen's kappa); cost/accuracy frontier with Pareto marking.
 
 ## Reproducibility
 
