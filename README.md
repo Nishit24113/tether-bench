@@ -50,9 +50,11 @@ class is *hallucinated* — the thing we want to catch.
 | `lexical_overlap` | free | Fraction of answer content tokens present in context |
 | `novel_token` | free | Penalizes answer tokens absent from context *and* question |
 | `tfidf_cosine` | free | TF-IDF cosine similarity between answer and context |
+| `nli_entailment` | model | A local NLI model scores whether the context entails the answer — the mid-cost tier |
 | `llm_judge` | api | A strong model (default `claude-opus-5-5`) judges faithfulness — the reference the cheap detectors are measured against |
 
-Planned: `nli_entailment` (local NLI model) for a mid-cost tier.
+All three cost tiers (`free`, `model`, `api`) are now populated, so the
+cost/accuracy frontier spans the full ladder.
 
 ## Results on the bundled sample (n=36, balanced)
 
@@ -140,6 +142,18 @@ print(judge_agreement(cheap_scores, judge_scores, cheap_threshold=thr))
 hallucinations the judge caught that the cheap detector missed — exactly the gap
 a paid judge is buying.
 
+The **mid-cost tier** is the NLI detector — same decoupled design, so it's
+mockable in tests and the model is an opt-in dependency
+(`pip install tether-bench[nli]`):
+
+```python
+from tether import NLIEntailmentDetector, transformers_nli
+
+# premise = context, hypothesis = answer; score = P(context entails answer)
+nli = NLIEntailmentDetector(transformers_nli("facebook/bart-large-mnli"))
+scores = nli.score_all(examples)
+```
+
 ## Cost/accuracy frontier
 
 The benchmark's headline artifact: each detector placed in (cost, quality) space,
@@ -199,21 +213,21 @@ tether/
   harness.py         # run detectors -> metrics -> ranked leaderboard
   agreement.py       # agreement rate + Cohen's kappa vs the judge
   frontier.py        # cost/accuracy Pareto frontier
-  baselines/         # majority, lexical, novel-token, tf-idf, llm-judge
+  baselines/         # majority, lexical, novel-token, tf-idf, nli, llm-judge
 data/sample.jsonl    # bundled labeled dataset (runs offline), error-type annotated
 scripts/run_benchmark.py
-tests/               # 90 unit tests
+tests/               # 99 unit tests
 ```
 
 ## Roadmap
 
-- **NLI-entailment baseline** (local model) to populate the mid-cost tier
 - **Larger, harder dataset** with annotated unsupported spans
 - **Paper draft**: benchmark description, baseline analysis, cost/accuracy findings
 
 _Done:_ error-type / support-type annotations with per-category recall breakdown;
-LLM-judge reference detector (provider-decoupled) + agreement analysis
-(agreement rate, Cohen's kappa); cost/accuracy frontier with Pareto marking.
+NLI-entailment mid-cost baseline, LLM-judge reference detector (both
+provider-decoupled) + agreement analysis (agreement rate, Cohen's kappa);
+cost/accuracy frontier with Pareto marking.
 
 ## Reproducibility
 

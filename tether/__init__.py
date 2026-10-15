@@ -27,6 +27,8 @@ from .baselines import (
     LLMJudgeDetector,
     anthropic_judge,
     parse_verdict,
+    NLIEntailmentDetector,
+    transformers_nli,
 )
 from .agreement import agreement_rate, cohen_kappa, judge_agreement
 from .frontier import (
@@ -48,6 +50,7 @@ __all__ = [
     "Detector", "MajorityDetector", "LexicalOverlapDetector",
     "NovelTokenDetector", "TfidfCosineDetector",
     "LLMJudgeDetector", "anthropic_judge", "parse_verdict",
+    "NLIEntailmentDetector", "transformers_nli",
     "agreement_rate", "cohen_kappa", "judge_agreement",
     "build_frontier", "pareto_frontier", "format_frontier",
     "frontier_detectors", "cost_of", "COST_SCORE",
