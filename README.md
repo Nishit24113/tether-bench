@@ -213,21 +213,26 @@ tether/
   harness.py         # run detectors -> metrics -> ranked leaderboard
   agreement.py       # agreement rate + Cohen's kappa vs the judge
   frontier.py        # cost/accuracy Pareto frontier
+  report.py          # reproducible Markdown report (leaderboard/breakdown/frontier)
   baselines/         # majority, lexical, novel-token, tf-idf, nli, llm-judge
 data/sample.jsonl    # bundled labeled dataset (runs offline), error-type annotated
-scripts/run_benchmark.py
-tests/               # 99 unit tests
+scripts/run_benchmark.py   # prints leaderboard + breakdown + frontier
+scripts/generate_report.py # regenerates RESULTS.md
+PAPER.md                   # working paper draft
+RESULTS.md                 # generated results, cited by the paper
+tests/               # 105 unit tests
 ```
 
 ## Roadmap
 
 - **Larger, harder dataset** with annotated unsupported spans
-- **Paper draft**: benchmark description, baseline analysis, cost/accuracy findings
+- **Measured** dollar/latency costs for the model and api tiers
 
 _Done:_ error-type / support-type annotations with per-category recall breakdown;
 NLI-entailment mid-cost baseline, LLM-judge reference detector (both
 provider-decoupled) + agreement analysis (agreement rate, Cohen's kappa);
-cost/accuracy frontier with Pareto marking.
+cost/accuracy frontier with Pareto marking; reproducible Markdown report
+([RESULTS.md](RESULTS.md)) and a working paper draft ([PAPER.md](PAPER.md)).
 
 ## Reproducibility
 

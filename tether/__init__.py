@@ -39,6 +39,12 @@ from .frontier import (
     cost_of,
     COST_SCORE,
 )
+from .report import (
+    generate_report,
+    leaderboard_markdown,
+    breakdown_markdown,
+    frontier_markdown,
+)
 
 __version__ = "0.1.0"
 
@@ -54,6 +60,8 @@ __all__ = [
     "agreement_rate", "cohen_kappa", "judge_agreement",
     "build_frontier", "pareto_frontier", "format_frontier",
     "frontier_detectors", "cost_of", "COST_SCORE",
+    "generate_report", "leaderboard_markdown", "breakdown_markdown",
+    "frontier_markdown",
 ]
 
 
