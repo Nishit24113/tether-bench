@@ -45,6 +45,13 @@ from .report import (
     breakdown_markdown,
     frontier_markdown,
 )
+from .cache import (
+    write_cache,
+    read_cache,
+    run_and_cache,
+    PrecomputedDetector,
+    precomputed_from_cache,
+)
 
 __version__ = "0.1.0"
 
@@ -62,6 +69,8 @@ __all__ = [
     "frontier_detectors", "cost_of", "COST_SCORE",
     "generate_report", "leaderboard_markdown", "breakdown_markdown",
     "frontier_markdown",
+    "write_cache", "read_cache", "run_and_cache",
+    "PrecomputedDetector", "precomputed_from_cache",
 ]
 
 

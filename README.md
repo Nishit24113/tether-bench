@@ -214,13 +214,16 @@ tether/
   agreement.py       # agreement rate + Cohen's kappa vs the judge
   frontier.py        # cost/accuracy Pareto frontier
   report.py          # reproducible Markdown report (leaderboard/breakdown/frontier)
+  cache.py           # persist/replay expensive detector scores (compute once, analyze anywhere)
   baselines/         # majority, lexical, novel-token, tf-idf, nli, llm-judge
 data/sample.jsonl    # bundled labeled dataset (runs offline), error-type annotated
 scripts/run_benchmark.py   # prints leaderboard + breakdown + frontier
 scripts/generate_report.py # regenerates RESULTS.md
+scripts/score_detector.py  # score one detector, cache to JSON (HPC job entry point)
 PAPER.md                   # working paper draft
 RESULTS.md                 # generated results, cited by the paper
-tests/               # 105 unit tests
+COMPUTE.md                 # running the NLI/judge tiers on ASU SOL / Gaudi
+tests/               # 114 unit tests
 ```
 
 ## Roadmap
@@ -232,7 +235,9 @@ _Done:_ error-type / support-type annotations with per-category recall breakdown
 NLI-entailment mid-cost baseline, LLM-judge reference detector (both
 provider-decoupled) + agreement analysis (agreement rate, Cohen's kappa);
 cost/accuracy frontier with Pareto marking; reproducible Markdown report
-([RESULTS.md](RESULTS.md)) and a working paper draft ([PAPER.md](PAPER.md)).
+([RESULTS.md](RESULTS.md)) and a working paper draft ([PAPER.md](PAPER.md));
+score caching so the heavy tiers run once on HPC and the analysis stays offline
+([COMPUTE.md](COMPUTE.md)).
 
 ## Reproducibility
 
