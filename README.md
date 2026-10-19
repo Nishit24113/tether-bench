@@ -56,53 +56,50 @@ class is *hallucinated* — the thing we want to catch.
 All three cost tiers (`free`, `model`, `api`) are now populated, so the
 cost/accuracy frontier spans the full ladder.
 
-## Results on the bundled sample (n=36, balanced)
+## Results on the bundled sample (n=50, balanced)
 
 ```
 detector           cost  auroc   f1      precision  recall  accuracy
 -----------------  ----  ------  ------  ---------  ------  --------
-novel_token        free  0.9120  0.8500  0.7727     0.9444  0.8333
-lexical_overlap    free  0.8873  0.8293  0.7391     0.9444  0.8056
-tfidf_cosine       free  0.8086  0.8000  0.7273     0.8889  0.7778
-majority_constant  free  0.5000  0.6667  0.5000     1.0000  0.5000
+novel_token        free  0.779   0.774   0.649      0.960   0.720
+lexical_overlap    free  0.763   0.762   0.632      0.960   0.700
+tfidf_cosine       free  0.603   0.676   0.510      1.000   0.520
+majority_constant  free  0.500   0.667   0.500      1.000   0.500
 ```
 
-Even trivial lexical detectors clear the floor by a wide margin on easy cases.
-The interesting question is *where* they fail — which the error-type breakdown
-below answers directly.
+The sample is built to be hard: many hallucinations reuse almost all of the
+context's vocabulary (an entity or number swapped), and many faithful answers
+paraphrase with few shared tokens. On this set the free detectors fall well
+short of the easy-case ceiling — `tfidf_cosine` drops to 0.60 AUROC, barely above
+the 0.50 floor, and the best lexical detector only reaches 0.78. The mean
+lexical overlap is 0.81 for faithful answers versus 0.65 for hallucinated ones, a
+gap of just 0.16, so surface overlap no longer separates the classes cleanly.
 
 ## Error-type breakdown
 
 Every hallucinated example is annotated with the kind of error it contains, and
 every faithful one with how it is supported. Tether reports per-category
-**detection recall** — what fraction of each error kind a detector actually
-catches at its F1-optimal threshold:
+**detection recall** at each detector's F1-optimal threshold:
 
 ```
 Detection recall by error type (hallucinated examples)
 
 error_type            majority_constant  lexical_overlap  novel_token  tfidf_cosine
 --------------------  -----------------  ---------------  -----------  ------------
-contradiction         1.00               1.00             1.00         0.75
-entity_swap           1.00               0.80             0.80         1.00
-numeric               1.00               1.00             1.00         0.80
+contradiction         1.00               1.00             1.00         1.00
+entity_swap           1.00               0.86             0.86         1.00
+numeric               1.00               1.00             1.00         1.00
 unsupported_addition  1.00               1.00             1.00         1.00
 ```
 
-(`majority_constant` scores 1.00 everywhere only because it flags *everything* as
-hallucinated — its 0.50 AUROC is the honest signal; recall here is a reminder
-that per-category recall must be read alongside false-positive rate.)
-
-The real finding is that the error types that evade cheap detectors are the ones
-where the hallucinated answer **reuses the context's vocabulary**:
-
-- **`entity_swap`** (e.g. "the *liver* produces insulin") slips past token-overlap
-  detectors — only one content word changed, so overlap stays high.
-- **`numeric`** errors (a single wrong digit) and **`contradiction`** are where
-  TF-IDF weakens, since the distinctive terms still match.
-
-Catching exactly these cases is where a semantic NLI model or an LLM judge should
-earn its cost — the comparison the next milestones add.
+On the harder set the free detectors reach these high per-type recalls only by
+moving their threshold down and flagging almost everything (precision falls to
+0.51-0.65), so recall at a single threshold is no longer the honest lens. AUROC
+is. `entity_swap` still has the lowest recall for the token-overlap detectors,
+since swapping one entity leaves the overlap high, and the AUROC drop shows the
+free detectors lose separability across the board when hallucinations reuse the
+context's words. This is the regime where a semantic NLI model or an LLM judge
+should earn its cost.
 
 ## The LLM judge & agreement analysis
 
@@ -166,9 +163,9 @@ Cost/accuracy frontier (quality = auroc; * = Pareto-optimal)
 
 detector           cost_tier  cost  auroc  frontier
 -----------------  ---------  ----  -----  --------
-novel_token        free       0.00  0.912  *
-lexical_overlap    free       0.00  0.887
-tfidf_cosine       free       0.00  0.809
+novel_token        free       0.00  0.779  *
+lexical_overlap    free       0.00  0.763
+tfidf_cosine       free       0.00  0.603
 majority_constant  free       0.00  0.500
 ```
 
@@ -215,25 +212,27 @@ tether/
   frontier.py        # cost/accuracy Pareto frontier
   report.py          # reproducible Markdown report (leaderboard/breakdown/frontier)
   cache.py           # persist/replay expensive detector scores (compute once, analyze anywhere)
+  dataset_stats.py   # dataset composition, integrity validation, difficulty summary
   baselines/         # majority, lexical, novel-token, tf-idf, nli, llm-judge
-data/sample.jsonl    # bundled labeled dataset (runs offline), error-type annotated
+data/sample.jsonl    # bundled labeled dataset (50 examples, runs offline), error-type annotated
 scripts/run_benchmark.py   # prints leaderboard + breakdown + frontier
 scripts/generate_report.py # regenerates RESULTS.md
 scripts/score_detector.py  # score one detector, cache to JSON (HPC job entry point)
 PAPER.md                   # working paper draft
 RESULTS.md                 # generated results, cited by the paper
 COMPUTE.md                 # running the NLI/judge tiers on ASU SOL / Gaudi
-tests/               # 114 unit tests
+tests/               # 124 unit tests
 ```
 
 ## Roadmap
 
-- **Larger, harder dataset** with annotated unsupported spans
+- **Grow the dataset further** toward hundreds of examples, with annotated unsupported spans
 - **Measured** dollar/latency costs for the model and api tiers
 
-_Done:_ error-type / support-type annotations with per-category recall breakdown;
-NLI-entailment mid-cost baseline, LLM-judge reference detector (both
-provider-decoupled) + agreement analysis (agreement rate, Cohen's kappa);
+_Done:_ 50-example error-type / support-type annotated dataset with integrity
+validation and a difficulty (lexical-overlap separation) summary; per-category
+recall breakdown; NLI-entailment mid-cost baseline, LLM-judge reference detector
+(both provider-decoupled) + agreement analysis (agreement rate, Cohen's kappa);
 cost/accuracy frontier with Pareto marking; reproducible Markdown report
 ([RESULTS.md](RESULTS.md)) and a working paper draft ([PAPER.md](PAPER.md));
 score caching so the heavy tiers run once on HPC and the analysis stays offline

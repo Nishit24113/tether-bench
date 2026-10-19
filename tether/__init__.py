@@ -52,6 +52,11 @@ from .cache import (
     PrecomputedDetector,
     precomputed_from_cache,
 )
+from .dataset_stats import (
+    validate_dataset,
+    dataset_report,
+    format_dataset_report,
+)
 
 __version__ = "0.1.0"
 
@@ -71,6 +76,7 @@ __all__ = [
     "frontier_markdown",
     "write_cache", "read_cache", "run_and_cache",
     "PrecomputedDetector", "precomputed_from_cache",
+    "validate_dataset", "dataset_report", "format_dataset_report",
 ]
 
 

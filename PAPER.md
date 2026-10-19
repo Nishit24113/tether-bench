@@ -19,10 +19,13 @@ separate grounded answers from hallucinations, and how closely they approximate
 an LLM judge. Tether contributes an error-type stratified dataset, a set of
 baselines spanning three cost tiers (free lexical heuristics, a local NLI model,
 and a paid LLM judge), agreement metrics against the judge, and a cost/accuracy
-frontier that makes the trade-off explicit. On the bundled sample, free
-detectors already clear the trivial floor by a wide margin, but they lose recall
-specifically on hallucinations that reuse the context vocabulary, which is where
-a semantic model or an LLM judge earns its cost.
+frontier that makes the trade-off explicit. On a deliberately hard sample, where
+hallucinations reuse most of the context vocabulary and faithful answers
+paraphrase with few shared tokens, the free detectors fall well short: the best
+reaches only 0.78 AUROC and a TF-IDF baseline drops to 0.60, barely above the
+0.50 floor. The mean lexical overlap separates faithful from hallucinated answers
+by just 0.16, so surface overlap is not enough, which is where a semantic model
+or an LLM judge earns its cost.
 
 ## 1. Introduction
 
@@ -52,9 +55,13 @@ is what we want to catch.
 
 ## 3. Dataset
 
-The bundled dataset is 36 hand-written examples, balanced 18 faithful and 18
-hallucinated, across general-knowledge domains. Every hallucinated example is
-annotated with an error type, and every faithful example with a support type:
+The bundled dataset is 50 hand-written examples, balanced 25 faithful and 25
+hallucinated, across general-knowledge domains. It is built to be hard: many
+hallucinations swap a single entity or number while reusing the rest of the
+context's wording, and many faithful answers paraphrase the context with few
+shared tokens. The mean lexical overlap is 0.81 for faithful answers and 0.65 for
+hallucinated ones, a gap of only 0.16. Every hallucinated example is annotated
+with an error type, and every faithful example with a support type:
 
 - **numeric**: a wrong number, date, or count.
 - **entity_swap**: a wrong entity that reuses the context vocabulary.
@@ -98,18 +105,18 @@ Leaderboard on the bundled sample (ranked by AUROC):
 
 | Detector | Cost | AUROC | F1 | Precision | Recall | Accuracy |
 | --- | --- | --- | --- | --- | --- | --- |
-| novel_token | free | 0.912 | 0.850 | 0.773 | 0.944 | 0.833 |
-| lexical_overlap | free | 0.887 | 0.829 | 0.739 | 0.944 | 0.806 |
-| tfidf_cosine | free | 0.809 | 0.800 | 0.727 | 0.889 | 0.778 |
+| novel_token | free | 0.779 | 0.774 | 0.649 | 0.960 | 0.720 |
+| lexical_overlap | free | 0.763 | 0.762 | 0.632 | 0.960 | 0.700 |
+| tfidf_cosine | free | 0.603 | 0.676 | 0.510 | 1.000 | 0.520 |
 | majority_constant | free | 0.500 | 0.667 | 0.500 | 1.000 | 0.500 |
 
-Detection recall by error type:
+Detection recall by error type (at each detector's F1-optimal threshold):
 
 | Error type | lexical_overlap | novel_token | tfidf_cosine |
 | --- | --- | --- | --- |
-| contradiction | 1.00 | 1.00 | 0.75 |
-| entity_swap | 0.80 | 0.80 | 1.00 |
-| numeric | 1.00 | 1.00 | 0.80 |
+| contradiction | 1.00 | 1.00 | 1.00 |
+| entity_swap | 0.86 | 0.86 | 1.00 |
+| numeric | 1.00 | 1.00 | 1.00 |
 | unsupported_addition | 1.00 | 1.00 | 1.00 |
 
 (`majority_constant` is omitted from the breakdown discussion because it flags
@@ -120,17 +127,21 @@ AUROC is 0.50.)
 
 Two findings stand out.
 
-First, the free detectors are already strong on easy cases. `novel_token` and
-`lexical_overlap` both reach AUROC near 0.9 on the sample, far above the 0.5
-floor. For clear hallucinations that introduce new vocabulary, token-level
-signals are enough.
+First, on a hard dataset the free detectors are not enough. The best, `novel_token`,
+reaches only 0.78 AUROC, and `tfidf_cosine` falls to 0.60, barely above the 0.50
+floor. Because faithful and hallucinated answers overlap the context by similar
+amounts (0.81 versus 0.65, a 0.16 gap), surface token signals no longer separate
+the classes. The high per-type recalls in the breakdown are achieved only by
+pushing the threshold down and flagging almost everything, which collapses
+precision to 0.51-0.65; AUROC, which is threshold-free, is the honest measure and
+it is where the free detectors visibly degrade.
 
-Second, the failures are concentrated and interpretable. Lexical detectors lose
-recall on `entity_swap`, where only one content word changes and overlap stays
-high, so a wrong entity slips through. TF-IDF cosine weakens on `contradiction`
-and `numeric`, where the distinctive terms still match the context even though
-the claim is false. These are exactly the cases a semantic model (NLI) or an LLM
-judge should catch, which is the argument for paying for a higher tier.
+Second, the hardest errors are the ones that reuse the context's words.
+`entity_swap` has the lowest recall for the token-overlap detectors, since
+swapping a single entity leaves most tokens shared. These vocabulary-preserving
+errors, together with the overall AUROC drop, are exactly the cases a semantic
+model (NLI) or an LLM judge should catch, which is the argument for paying for a
+higher tier.
 
 The cost/accuracy frontier ties this together. Among the free detectors only
 `novel_token` is Pareto-optimal, since the others cost the same and detect less.
