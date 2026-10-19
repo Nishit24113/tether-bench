@@ -101,6 +101,12 @@ free detectors lose separability across the board when hallucinations reuse the
 context's words. This is the regime where a semantic NLI model or an LLM judge
 should earn its cost.
 
+Per-example **error analysis** (`tether/error_analysis.py`,
+`python scripts/error_analysis.py`) makes this concrete: at its threshold the
+lexical detector's false positives are almost all paraphrases (faithful answers
+it flags for sharing few tokens), and its misses are the vocabulary-reusing
+swaps. Both are failures of meaning, not surface overlap.
+
 ## The LLM judge & agreement analysis
 
 The whole point of Tether is to ask *how closely a free detector tracks an
@@ -213,6 +219,7 @@ tether/
   report.py          # reproducible Markdown report (leaderboard/breakdown/frontier)
   cache.py           # persist/replay expensive detector scores (compute once, analyze anywhere)
   dataset_stats.py   # dataset composition, integrity validation, difficulty summary
+  error_analysis.py  # which examples each detector gets wrong (false pos/neg by type)
   baselines/         # majority, lexical, novel-token, tf-idf, nli, llm-judge
 data/sample.jsonl    # bundled labeled dataset (50 examples, runs offline), error-type annotated
 scripts/run_benchmark.py   # prints leaderboard + breakdown + frontier
@@ -221,7 +228,7 @@ scripts/score_detector.py  # score one detector, cache to JSON (HPC job entry po
 PAPER.md                   # working paper draft
 RESULTS.md                 # generated results, cited by the paper
 COMPUTE.md                 # running the NLI/judge tiers on ASU SOL / Gaudi
-tests/               # 124 unit tests
+tests/               # 130 unit tests
 ```
 
 ## Roadmap

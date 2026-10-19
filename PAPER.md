@@ -143,6 +143,15 @@ errors, together with the overall AUROC drop, are exactly the cases a semantic
 model (NLI) or an LLM judge should catch, which is the argument for paying for a
 higher tier.
 
+Per-example error analysis makes the failure modes concrete. At its F1-optimal
+threshold the lexical detector's false positives are dominated by paraphrases: it
+flags faithful answers such as "They teach the body's defenses to identify and
+combat particular germs" because they restate the context with few shared tokens.
+Its false negatives are the vocabulary-reusing swaps, for example answering that
+"the capital of Australia is Sydney" from a context that names Canberra. Both
+failure modes are about meaning rather than surface words, which is precisely what
+the higher tiers are meant to add.
+
 The cost/accuracy frontier ties this together. Among the free detectors only
 `novel_token` is Pareto-optimal, since the others cost the same and detect less.
 Adding the NLI model populates the mid-cost tier, and the LLM judge sits at the

@@ -57,6 +57,7 @@ from .dataset_stats import (
     dataset_report,
     format_dataset_report,
 )
+from .error_analysis import misclassified, format_errors
 
 __version__ = "0.1.0"
 
@@ -77,6 +78,7 @@ __all__ = [
     "write_cache", "read_cache", "run_and_cache",
     "PrecomputedDetector", "precomputed_from_cache",
     "validate_dataset", "dataset_report", "format_dataset_report",
+    "misclassified", "format_errors",
 ]
 
 
