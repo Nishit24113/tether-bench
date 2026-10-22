@@ -12,7 +12,7 @@ volume, provider, and token counts, so the frontier ranks tiers rather than
 pricing them. Override COST_SCORE to plug in measured costs.
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 # Representative relative cost per tier (0 = free, 1 = paid API call).
 # These are ordinal placeholders — override with measured $/1k-examples if known.
@@ -23,9 +23,15 @@ COST_SCORE = {
 }
 
 
-def cost_of(cost_tier: str) -> float:
-    """Relative cost score for a tier; unknown tiers are treated as most expensive."""
-    return COST_SCORE.get(cost_tier, 1.0)
+def cost_of(cost_tier: str, cost_scores: Optional[Dict[str, float]] = None) -> float:
+    """
+    Relative cost score for a tier; unknown tiers are treated as most expensive.
+
+    Pass `cost_scores` (e.g. measured scores from the cost model) to override the
+    default COST_SCORE placeholders.
+    """
+    scores = cost_scores if cost_scores is not None else COST_SCORE
+    return scores.get(cost_tier, 1.0)
 
 
 def pareto_frontier(points: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -58,11 +64,14 @@ def pareto_frontier(points: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def build_frontier(
     leaderboard_rows: List[Dict[str, Any]],
     metric: str = "auroc",
+    cost_scores: Optional[Dict[str, float]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Build frontier points from leaderboard rows.
 
     Each row must have `detector`, `cost` (tier string), and the chosen `metric`.
+    Pass `cost_scores` (e.g. measured, normalized costs from the cost model) to
+    price the cost axis in real units instead of the default placeholders.
     Returns points sorted by cost then descending quality, each with
     `on_frontier` set.
     """
@@ -70,7 +79,7 @@ def build_frontier(
         {
             "detector": row["detector"],
             "cost_tier": row["cost"],
-            "cost": cost_of(row["cost"]),
+            "cost": cost_of(row["cost"], cost_scores),
             "quality": float(row[metric]),
             "metric": metric,
         }

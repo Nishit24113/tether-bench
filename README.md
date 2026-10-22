@@ -189,6 +189,31 @@ bench = run_benchmark(default_detectors(examples), examples)
 print(format_frontier(build_frontier(bench["leaderboard"], metric="auroc")))
 ```
 
+### Pricing the frontier in real units
+
+The default cost axis uses relative placeholders. The `cost_model` estimates the
+actual per-tier cost so the frontier can be priced in dollars:
+
+```python
+from tether import (
+    load_sample, estimate_api_cost, estimate_model_cost, free_cost,
+    normalized_cost_scores, build_frontier,
+)
+examples = load_sample()
+costs = {
+    "free": free_cost(len(examples)).total_usd,
+    "model": estimate_model_cost(len(examples), seconds_per_example=0.05, hourly_rate_usd=2.0).total_usd,
+    "api": estimate_api_cost(examples, input_price_per_1m=4.0, output_price_per_1m=20.0).total_usd,
+}
+build_frontier(bench["leaderboard"], cost_scores=normalized_cost_scores(costs))
+```
+
+On the 50-example sample, judging every answer with an LLM judge at Opus-tier
+pricing costs about **$0.053** (~$0.0011/example), the NLI tier about **$0.0014**
+of GPU time, and the free tier **$0**. Normalized, that is `free 0.0, model 0.026,
+api 1.0` — the measured mid tier is far cheaper than the placeholder 0.3, which is
+exactly the kind of correction real cost numbers make to the frontier.
+
 ## Quickstart
 
 ```bash
@@ -220,6 +245,7 @@ tether/
   cache.py           # persist/replay expensive detector scores (compute once, analyze anywhere)
   dataset_stats.py   # dataset composition, integrity validation, difficulty summary
   error_analysis.py  # which examples each detector gets wrong (false pos/neg by type)
+  cost_model.py      # estimate per-tier $ cost; price the frontier in real units
   baselines/         # majority, lexical, novel-token, tf-idf, nli, llm-judge
 data/sample.jsonl    # bundled labeled dataset (50 examples, runs offline), error-type annotated
 scripts/run_benchmark.py   # prints leaderboard + breakdown + frontier
@@ -228,13 +254,13 @@ scripts/score_detector.py  # score one detector, cache to JSON (HPC job entry po
 PAPER.md                   # working paper draft
 RESULTS.md                 # generated results, cited by the paper
 COMPUTE.md                 # running the NLI/judge tiers on ASU SOL / Gaudi
-tests/               # 130 unit tests
+tests/               # 140 unit tests
 ```
 
 ## Roadmap
 
 - **Grow the dataset further** toward hundreds of examples, with annotated unsupported spans
-- **Measured** dollar/latency costs for the model and api tiers
+- **Wire live measured latency/tokens** from real NLI and judge runs into the cost model
 
 _Done:_ 50-example error-type / support-type annotated dataset with integrity
 validation and a difficulty (lexical-overlap separation) summary; per-category
@@ -243,7 +269,8 @@ recall breakdown; NLI-entailment mid-cost baseline, LLM-judge reference detector
 cost/accuracy frontier with Pareto marking; reproducible Markdown report
 ([RESULTS.md](RESULTS.md)) and a working paper draft ([PAPER.md](PAPER.md));
 score caching so the heavy tiers run once on HPC and the analysis stays offline
-([COMPUTE.md](COMPUTE.md)).
+([COMPUTE.md](COMPUTE.md)); a cost model that prices the frontier in real dollars
+per tier.
 
 ## Reproducibility
 
