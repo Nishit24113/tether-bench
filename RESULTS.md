@@ -4,14 +4,24 @@ Dataset: 50 examples (25 faithful, 25 hallucinated).
 
 ## Leaderboard
 
-Ranked by AUROC (threshold-free). Precision/recall/F1 are reported at each detector's F1-optimal threshold.
+Ranked by AUROC (threshold-free). Precision/recall/F1 are reported at each detector's F1-optimal threshold. AUROC 95% CIs come from a stratified bootstrap (2000 resamples, seed 0).
 
-| Detector | Cost | AUROC | F1 | Precision | Recall | Accuracy |
-| --- | --- | --- | --- | --- | --- | --- |
-| novel_token | free | 0.779 | 0.774 | 0.649 | 0.960 | 0.720 |
-| lexical_overlap | free | 0.763 | 0.762 | 0.632 | 0.960 | 0.700 |
-| tfidf_cosine | free | 0.603 | 0.676 | 0.510 | 1.000 | 0.520 |
-| majority_constant | free | 0.500 | 0.667 | 0.500 | 1.000 | 0.500 |
+| Detector | Cost | AUROC | AUROC 95% CI | F1 | Precision | Recall | Accuracy |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| novel_token | free | 0.779 | [0.635, 0.902] | 0.774 | 0.649 | 0.960 | 0.720 |
+| lexical_overlap | free | 0.763 | [0.614, 0.890] | 0.762 | 0.632 | 0.960 | 0.700 |
+| tfidf_cosine | free | 0.603 | [0.435, 0.758] | 0.676 | 0.510 | 1.000 | 0.520 |
+| majority_constant | free | 0.500 | [0.500, 0.500] | 0.667 | 0.500 | 1.000 | 0.500 |
+
+## Are the gaps real?
+
+Paired stratified bootstrap of the best detector (novel_token) against each other detector, scored on identical resamples. Two-sided p-values; significant means p < 0.05. The last column counts the examples the two detectors score differently, which is all the evidence a paired comparison has.
+
+| novel_token vs | AUROC diff | 95% CI | p-value | Significant | Examples scored differently |
+| --- | --- | --- | --- | --- | --- |
+| lexical_overlap | +0.016 | [-0.013, +0.070] | 0.776 | no | 3/50 |
+| tfidf_cosine | +0.176 | [+0.040, +0.321] | 0.007 | yes | 49/50 |
+| majority_constant | +0.279 | [+0.135, +0.402] | < 0.001 | yes | 48/50 |
 
 ## Detection recall by error type
 

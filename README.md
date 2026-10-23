@@ -29,6 +29,9 @@ free lexical heuristics to (in later versions) a Claude-based judge.
 - **A floor and a frontier.** A majority baseline pins AUROC at 0.5; every real
   detector is measured against it and tagged with a cost tier for the
   cost/accuracy analysis.
+- **Error bars on every number.** Each AUROC comes with a stratified bootstrap
+  95% CI, and the leader is tested against every other detector with a paired
+  bootstrap, so a leaderboard gap only counts if it survives resampling.
 
 ## Task
 
@@ -74,6 +77,39 @@ short of the easy-case ceiling — `tfidf_cosine` drops to 0.60 AUROC, barely ab
 the 0.50 floor, and the best lexical detector only reaches 0.78. The mean
 lexical overlap is 0.81 for faithful answers versus 0.65 for hallucinated ones, a
 gap of just 0.16, so surface overlap no longer separates the classes cleanly.
+
+### Are the gaps real?
+
+Fifty examples give wide error bars, so Tether reports them instead of letting a
+small gap pass as a result. Each AUROC gets a 95% CI from a stratified bootstrap
+(2000 resamples, seed 0), and the best detector is compared with each of the
+others by a paired bootstrap on identical resamples:
+
+| Detector | AUROC | AUROC 95% CI | Gap from `novel_token` | Gap 95% CI | p-value |
+|----------|-------|--------------|------------------------|------------|---------|
+| `novel_token` | 0.779 | [0.635, 0.902] | - | - | - |
+| `lexical_overlap` | 0.763 | [0.614, 0.890] | +0.016 | [-0.013, +0.070] | 0.776 |
+| `tfidf_cosine` | 0.603 | [0.435, 0.758] | +0.176 | [+0.040, +0.321] | 0.007 |
+| `majority_constant` | 0.500 | [0.500, 0.500] | +0.279 | [+0.135, +0.402] | < 0.001 |
+
+The top two places are a statistical tie. `novel_token` and `lexical_overlap`
+give identical scores on 47 of the 50 examples (they only differ when an answer
+reuses a question word the context lacks), so their 0.016 gap rests on three
+answers. Both beat `tfidf_cosine` and the constant floor significantly. With
+intervals 0.27 to 0.32 AUROC wide, separating detectors a few points apart will
+need a much larger dataset.
+
+```python
+from tether import load_sample, default_detectors, detector_uncertainty
+
+examples = load_sample()
+unc = detector_uncertainty(default_detectors(examples), examples)
+unc["cis"]["novel_token"]          # point, lo, hi of the AUROC
+unc["vs_best"]["lexical_overlap"]  # diff, lo, hi, p_value, significant, n_differ
+```
+
+`bootstrap_ci(labels, scores)` and `paired_bootstrap(labels, scores_a, scores_b)`
+work on raw score lists, so they apply just as well to cached NLI or judge scores.
 
 ## Error-type breakdown
 
@@ -176,7 +212,8 @@ majority_constant  free       0.00  0.500
 ```
 
 Among the free detectors only `novel_token` is Pareto-optimal — the rest cost
-the same but detect less. Add the `llm_judge` row (cost tier `api`) and it joins
+the same but detect less (though its edge over `lexical_overlap` is within
+noise, as the paired test above shows). Add the `llm_judge` row (cost tier `api`) and it joins
 the frontier at the top: more expensive, but highest quality. The research
 payoff is the shape of that staircase — *how much AUROC each step up the cost
 ladder actually buys.*
@@ -218,7 +255,7 @@ exactly the kind of correction real cost numbers make to the frontier.
 
 ```bash
 pip install -e ".[dev]"
-pytest                          # 38 tests, all stdlib
+pytest                          # 159 tests, all stdlib
 python scripts/run_benchmark.py # prints the leaderboard above
 ```
 
@@ -246,6 +283,7 @@ tether/
   dataset_stats.py   # dataset composition, integrity validation, difficulty summary
   error_analysis.py  # which examples each detector gets wrong (false pos/neg by type)
   cost_model.py      # estimate per-tier $ cost; price the frontier in real units
+  stats.py           # stratified bootstrap CIs + paired significance test for leaderboard gaps
   baselines/         # majority, lexical, novel-token, tf-idf, nli, llm-judge
 data/sample.jsonl    # bundled labeled dataset (50 examples, runs offline), error-type annotated
 scripts/run_benchmark.py   # prints leaderboard + breakdown + frontier
@@ -254,12 +292,13 @@ scripts/score_detector.py  # score one detector, cache to JSON (HPC job entry po
 PAPER.md                   # working paper draft
 RESULTS.md                 # generated results, cited by the paper
 COMPUTE.md                 # running the NLI/judge tiers on ASU SOL / Gaudi
-tests/               # 140 unit tests
+tests/               # 159 unit tests
 ```
 
 ## Roadmap
 
 - **Grow the dataset further** toward hundreds of examples, with annotated unsupported spans
+  (at n=50 the CIs are too wide to separate the top two detectors)
 - **Wire live measured latency/tokens** from real NLI and judge runs into the cost model
 
 _Done:_ 50-example error-type / support-type annotated dataset with integrity
@@ -270,7 +309,8 @@ cost/accuracy frontier with Pareto marking; reproducible Markdown report
 ([RESULTS.md](RESULTS.md)) and a working paper draft ([PAPER.md](PAPER.md));
 score caching so the heavy tiers run once on HPC and the analysis stays offline
 ([COMPUTE.md](COMPUTE.md)); a cost model that prices the frontier in real dollars
-per tier.
+per tier; stratified bootstrap CIs on every AUROC and a paired bootstrap test for
+leaderboard gaps.
 
 ## Reproducibility
 

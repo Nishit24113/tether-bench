@@ -18,12 +18,15 @@ reproducible benchmark that measures how well low-cost faithfulness detectors
 separate grounded answers from hallucinations, and how closely they approximate
 an LLM judge. Tether contributes an error-type stratified dataset, a set of
 baselines spanning three cost tiers (free lexical heuristics, a local NLI model,
-and a paid LLM judge), agreement metrics against the judge, and a cost/accuracy
-frontier that makes the trade-off explicit. On a deliberately hard sample, where
-hallucinations reuse most of the context vocabulary and faithful answers
-paraphrase with few shared tokens, the free detectors fall well short: the best
-reaches only 0.78 AUROC and a TF-IDF baseline drops to 0.60, barely above the
-0.50 floor. The mean lexical overlap separates faithful from hallucinated answers
+and a paid LLM judge), agreement metrics against the judge, a cost/accuracy
+frontier that makes the trade-off explicit, and bootstrap confidence intervals
+with paired significance tests so that small leaderboard gaps are not over-read.
+On a deliberately hard sample, where hallucinations reuse most of the context
+vocabulary and faithful answers paraphrase with few shared tokens, the free
+detectors fall well short: the best reaches only 0.78 AUROC (95% CI 0.64 to
+0.90) and a TF-IDF baseline drops to 0.60, barely above the 0.50 floor. A paired
+bootstrap shows the two best free detectors are statistically tied, while both
+significantly outperform TF-IDF and the floor. The mean lexical overlap separates faithful from hallucinated answers
 by just 0.16, so surface overlap is not enough, which is where a semantic model
 or an LLM judge earns its cost.
 
@@ -99,16 +102,36 @@ central question we compute agreement between a cheap detector and the judge on
 the binary hallucination decision, using both raw agreement rate and Cohen's
 kappa, which corrects for chance agreement.
 
+Because the dataset is small, every AUROC is reported with a 95% confidence
+interval from a percentile bootstrap (2000 resamples, fixed seed). Resampling is
+stratified by class, so each resample keeps 25 faithful and 25 hallucinated
+examples and AUROC is always defined. To decide whether a leaderboard gap is
+real, we run a paired bootstrap: both detectors are scored on the same
+resamples, the interval is placed on their AUROC difference, and the two-sided
+p-value is twice the smaller share of resampled differences on either side of
+zero. Resamples where the two detectors tie count toward both sides, which keeps
+the test conservative. We also report how many examples the two detectors score
+differently, since a paired comparison can only draw evidence from those.
+
 ## 6. Results
 
-Leaderboard on the bundled sample (ranked by AUROC):
+Leaderboard on the bundled sample (ranked by AUROC, with stratified bootstrap
+95% CIs):
 
-| Detector | Cost | AUROC | F1 | Precision | Recall | Accuracy |
-| --- | --- | --- | --- | --- | --- | --- |
-| novel_token | free | 0.779 | 0.774 | 0.649 | 0.960 | 0.720 |
-| lexical_overlap | free | 0.763 | 0.762 | 0.632 | 0.960 | 0.700 |
-| tfidf_cosine | free | 0.603 | 0.676 | 0.510 | 1.000 | 0.520 |
-| majority_constant | free | 0.500 | 0.667 | 0.500 | 1.000 | 0.500 |
+| Detector | Cost | AUROC | AUROC 95% CI | F1 | Precision | Recall | Accuracy |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| novel_token | free | 0.779 | [0.635, 0.902] | 0.774 | 0.649 | 0.960 | 0.720 |
+| lexical_overlap | free | 0.763 | [0.614, 0.890] | 0.762 | 0.632 | 0.960 | 0.700 |
+| tfidf_cosine | free | 0.603 | [0.435, 0.758] | 0.676 | 0.510 | 1.000 | 0.520 |
+| majority_constant | free | 0.500 | [0.500, 0.500] | 0.667 | 0.500 | 1.000 | 0.500 |
+
+Paired bootstrap of the best detector against each of the others:
+
+| novel_token vs | AUROC diff | 95% CI | p-value | Significant | Examples scored differently |
+| --- | --- | --- | --- | --- | --- |
+| lexical_overlap | +0.016 | [-0.013, +0.070] | 0.776 | no | 3/50 |
+| tfidf_cosine | +0.176 | [+0.040, +0.321] | 0.007 | yes | 49/50 |
+| majority_constant | +0.279 | [+0.135, +0.402] | < 0.001 | yes | 48/50 |
 
 Detection recall by error type (at each detector's F1-optimal threshold):
 
@@ -125,7 +148,7 @@ AUROC is 0.50.)
 
 ## 7. Analysis
 
-Two findings stand out.
+Three findings stand out.
 
 First, on a hard dataset the free detectors are not enough. The best, `novel_token`,
 reaches only 0.78 AUROC, and `tfidf_cosine` falls to 0.60, barely above the 0.50
@@ -152,8 +175,20 @@ Its false negatives are the vocabulary-reusing swaps, for example answering that
 failure modes are about meaning rather than surface words, which is precisely what
 the higher tiers are meant to add.
 
+Third, the ranking at the top of the free tier cannot be resolved at this sample
+size. `novel_token` leads `lexical_overlap` by 0.016 AUROC, but the paired 95%
+interval on that gap is [-0.013, +0.070] and p = 0.776. The two detectors give
+identical scores on 47 of the 50 examples, because they differ only when an
+answer reuses a question word that the context lacks, so the entire gap rests on
+three answers. In contrast, `novel_token` beats `tfidf_cosine` by 0.176
+(p = 0.007) and the constant floor by 0.279 (p < 0.001). The single-detector
+intervals are wide too, 0.27 to 0.32 AUROC for each non-constant detector, so a
+claim that one cheap detector beats another by a few points needs a larger
+dataset than this one.
+
 The cost/accuracy frontier ties this together. Among the free detectors only
-`novel_token` is Pareto-optimal, since the others cost the same and detect less.
+`novel_token` is Pareto-optimal, since the others cost the same and detect less,
+although its edge over `lexical_overlap` is within noise.
 Adding the NLI model populates the mid-cost tier, and the LLM judge sits at the
 top of the frontier: most expensive, highest quality. The research payoff is the
 shape of that staircase, which quantifies how much AUROC each step up the cost
@@ -162,7 +197,9 @@ ladder actually buys.
 ## 8. Limitations
 
 The dataset is small and hand-written, which keeps it reproducible but limits
-statistical power and domain coverage. The error types are a coarse taxonomy.
+statistical power and domain coverage. The bootstrap makes the cost in power
+explicit: the 95% AUROC intervals span 0.27 to 0.32, too wide to separate
+detectors a few points apart. The error types are a coarse taxonomy.
 The live NLI and LLM paths are not exercised in continuous integration, since
 they require a model download or API access, so the committed results cover the
 free tier. Absolute cost is represented by relative per-tier scores rather than
@@ -171,14 +208,17 @@ measured dollars.
 ## 9. Future Work
 
 Natural next steps are a larger and harder dataset with annotated unsupported
-spans, measured dollar and latency costs for the model and API tiers, more
+spans, large enough to resolve the gaps the current intervals leave open,
+measured dollar and latency costs for the model and API tiers, more
 baselines in the mid-cost tier (embedding similarity, smaller NLI models), and a
 reported agreement study between the cheap detectors and the judge across the
 full dataset.
 
 ## 10. Reproducibility
 
-The free-tier results, metrics, and frontier are pure-stdlib and deterministic.
-Running `python scripts/generate_report.py` regenerates `RESULTS.md`, and the
-test suite (`pytest`) covers the metrics, baselines, breakdown, frontier,
-agreement, and report generation offline.
+The free-tier results, metrics, frontier, and bootstrap statistics are
+pure-stdlib and deterministic. The bootstrap is seeded, so every interval and
+p-value is identical across runs. Running `python scripts/generate_report.py`
+regenerates `RESULTS.md`, and the test suite (`pytest`) covers the metrics,
+baselines, breakdown, frontier, agreement, bootstrap statistics, and report
+generation offline.

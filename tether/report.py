@@ -13,6 +13,7 @@ from .data import Example, class_balance
 from .baselines.base import Detector
 from .harness import run_benchmark, run_category_breakdown
 from .frontier import build_frontier
+from .stats import detector_uncertainty
 
 
 def _md_table(headers: List[str], rows: List[List[str]]) -> str:
@@ -23,20 +24,41 @@ def _md_table(headers: List[str], rows: List[List[str]]) -> str:
     return "\n".join([head, sep, *body])
 
 
-def leaderboard_markdown(benchmark: Dict[str, Any]) -> str:
-    """Leaderboard as a Markdown table, ranked by AUROC (as the harness sorts it)."""
-    headers = ["Detector", "Cost", "AUROC", "F1", "Precision", "Recall", "Accuracy"]
+def leaderboard_markdown(benchmark: Dict[str, Any], cis: Dict[str, Any] = None) -> str:
+    """
+    Leaderboard as a Markdown table, ranked by AUROC (as the harness sorts it).
+    If `cis` (from stats.detector_uncertainty) is given, adds a 95% CI column.
+    """
+    headers = ["Detector", "Cost", "AUROC"]
+    if cis:
+        headers.append("AUROC 95% CI")
+    headers += ["F1", "Precision", "Recall", "Accuracy"]
+    rows = []
+    for row in benchmark["leaderboard"]:
+        cells = [row["detector"], row["cost"], f"{row['auroc']:.3f}"]
+        if cis:
+            ci = cis.get(row["detector"])
+            cells.append(f"[{ci['lo']:.3f}, {ci['hi']:.3f}]" if ci else "-")
+        cells += [f"{row['f1']:.3f}", f"{row['precision']:.3f}",
+                  f"{row['recall']:.3f}", f"{row['accuracy']:.3f}"]
+        rows.append(cells)
+    return _md_table(headers, rows)
+
+
+def _fmt_p(p: float, n_boot: int) -> str:
+    """A bootstrap p of 0 only means no resample crossed zero, so report it as a bound."""
+    return f"< {2 / n_boot:.3g}" if p == 0 else f"{p:.3f}"
+
+
+def significance_markdown(unc: Dict[str, Any]) -> str:
+    """Paired bootstrap of the best detector vs each other detector (AUROC difference)."""
+    headers = [f"{unc['best']} vs", "AUROC diff", "95% CI", "p-value", "Significant",
+               "Examples scored differently"]
     rows = [
-        [
-            row["detector"],
-            row["cost"],
-            f"{row['auroc']:.3f}",
-            f"{row['f1']:.3f}",
-            f"{row['precision']:.3f}",
-            f"{row['recall']:.3f}",
-            f"{row['accuracy']:.3f}",
-        ]
-        for row in benchmark["leaderboard"]
+        [name, f"{r['diff']:+.3f}", f"[{r['lo']:+.3f}, {r['hi']:+.3f}]",
+         _fmt_p(r["p_value"], r["n_boot"]), "yes" if r["significant"] else "no",
+         f"{r['n_differ']}/{r['n']}"]
+        for name, r in sorted(unc["vs_best"].items(), key=lambda kv: kv[1]["diff"])
     ]
     return _md_table(headers, rows)
 
@@ -91,6 +113,7 @@ def generate_report(
     benchmark = run_benchmark(detectors, examples)
     breakdowns = run_category_breakdown(detectors, examples)
     frontier = build_frontier(benchmark["leaderboard"], metric=metric)
+    unc = detector_uncertainty(detectors, examples)
     bal = class_balance(examples)
 
     parts = [
@@ -102,9 +125,20 @@ def generate_report(
         "## Leaderboard",
         "",
         "Ranked by AUROC (threshold-free). Precision/recall/F1 are reported at "
-        "each detector's F1-optimal threshold.",
+        "each detector's F1-optimal threshold. AUROC 95% CIs come from a "
+        f"stratified bootstrap ({unc['n_boot']} resamples, seed {unc['seed']}).",
         "",
-        leaderboard_markdown(benchmark),
+        leaderboard_markdown(benchmark, unc["cis"]),
+        "",
+        "## Are the gaps real?",
+        "",
+        f"Paired stratified bootstrap of the best detector ({unc['best']}) against "
+        "each other detector, scored on identical resamples. Two-sided p-values; "
+        "significant means p < 0.05. The last column counts the examples the two "
+        "detectors score differently, which is all the evidence a paired "
+        "comparison has.",
+        "",
+        significance_markdown(unc),
         "",
         "## Detection recall by error type",
         "",

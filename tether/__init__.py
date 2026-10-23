@@ -58,6 +58,7 @@ from .dataset_stats import (
     format_dataset_report,
 )
 from .error_analysis import misclassified, format_errors
+from .stats import bootstrap_ci, paired_bootstrap, detector_uncertainty
 from .cost_model import (
     CostEstimate,
     estimate_api_cost,
@@ -86,6 +87,7 @@ __all__ = [
     "PrecomputedDetector", "precomputed_from_cache",
     "validate_dataset", "dataset_report", "format_dataset_report",
     "misclassified", "format_errors",
+    "bootstrap_ci", "paired_bootstrap", "detector_uncertainty",
     "CostEstimate", "estimate_api_cost", "estimate_model_cost",
     "free_cost", "normalized_cost_scores",
 ]
