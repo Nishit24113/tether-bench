@@ -23,6 +23,17 @@ Paired stratified bootstrap of the best detector (novel_token) against each othe
 | tfidf_cosine | +0.176 | [+0.040, +0.321] | 0.007 | yes | 49/50 |
 | majority_constant | +0.279 | [+0.135, +0.402] | < 0.001 | yes | 48/50 |
 
+## Are the scores trustworthy probabilities?
+
+AUROC only asks whether a detector *ranks* faithful answers above hallucinated ones. Calibration asks whether a faithfulness score of p means the answer is faithful about p of the time. ECE is the count-weighted mean gap between predicted score and observed faithful rate across 10 bins (lower is better); MCE is the worst single bin; Brier is the mean squared error of the scores as probabilities. The ECE CI is a stratified bootstrap (2000 resamples, seed 0).
+
+| Detector | ECE | ECE 95% CI | MCE | Brier |
+| --- | --- | --- | --- | --- |
+| majority_constant | 0.000 | [0.000, 0.000] | 0.000 | 0.250 |
+| tfidf_cosine | 0.187 | [0.135, 0.344] | 0.928 | 0.265 |
+| lexical_overlap | 0.304 | [0.242, 0.391] | 1.000 | 0.281 |
+| novel_token | 0.321 | [0.258, 0.399] | 1.000 | 0.288 |
+
 ## Detection recall by error type
 
 Recall of hallucination detection, per annotated error type, at each detector's F1-optimal threshold.

@@ -14,6 +14,7 @@ from .baselines.base import Detector
 from .harness import run_benchmark, run_category_breakdown
 from .frontier import build_frontier
 from .stats import detector_uncertainty
+from .calibration import detector_calibration, calibration_ci
 
 
 def _md_table(headers: List[str], rows: List[List[str]]) -> str:
@@ -60,6 +61,21 @@ def significance_markdown(unc: Dict[str, Any]) -> str:
          f"{r['n_differ']}/{r['n']}"]
         for name, r in sorted(unc["vs_best"].items(), key=lambda kv: kv[1]["diff"])
     ]
+    return _md_table(headers, rows)
+
+
+def calibration_markdown(cal: Dict[str, Any], labels, scores) -> str:
+    """
+    Calibration table: ECE (with a bootstrap CI), MCE, and Brier per detector.
+    `cal` is detector_calibration(...); `scores` maps detector name -> score list.
+    Rows are ordered by ECE (best-calibrated first).
+    """
+    headers = ["Detector", "ECE", "ECE 95% CI", "MCE", "Brier"]
+    rows = []
+    for name, c in sorted(cal.items(), key=lambda kv: kv[1]["ece"]):
+        ci = calibration_ci(labels, scores[name], "ece", n_bins=c["n_bins"])
+        rows.append([name, f"{c['ece']:.3f}", f"[{ci['lo']:.3f}, {ci['hi']:.3f}]",
+                     f"{c['mce']:.3f}", f"{c['brier']:.3f}"])
     return _md_table(headers, rows)
 
 
@@ -114,6 +130,9 @@ def generate_report(
     breakdowns = run_category_breakdown(detectors, examples)
     frontier = build_frontier(benchmark["leaderboard"], metric=metric)
     unc = detector_uncertainty(detectors, examples)
+    cal = detector_calibration(detectors, examples)
+    labels = [e.label for e in examples]
+    cal_scores = {d.name: d.score_all(examples) for d in detectors}
     bal = class_balance(examples)
 
     parts = [
@@ -139,6 +158,18 @@ def generate_report(
         "comparison has.",
         "",
         significance_markdown(unc),
+        "",
+        "## Are the scores trustworthy probabilities?",
+        "",
+        "AUROC only asks whether a detector *ranks* faithful answers above "
+        "hallucinated ones. Calibration asks whether a faithfulness score of p "
+        "means the answer is faithful about p of the time. ECE is the "
+        "count-weighted mean gap between predicted score and observed faithful "
+        "rate across 10 bins (lower is better); MCE is the worst single bin; "
+        "Brier is the mean squared error of the scores as probabilities. The ECE "
+        "CI is a stratified bootstrap (2000 resamples, seed 0).",
+        "",
+        calibration_markdown(cal, labels, cal_scores),
         "",
         "## Detection recall by error type",
         "",

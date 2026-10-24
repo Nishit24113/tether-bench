@@ -59,6 +59,15 @@ from .dataset_stats import (
 )
 from .error_analysis import misclassified, format_errors
 from .stats import bootstrap_ci, paired_bootstrap, detector_uncertainty
+from .calibration import (
+    brier_score,
+    reliability_bins,
+    expected_calibration_error,
+    maximum_calibration_error,
+    calibration,
+    calibration_ci,
+    detector_calibration,
+)
 from .cost_model import (
     CostEstimate,
     estimate_api_cost,
@@ -88,6 +97,9 @@ __all__ = [
     "validate_dataset", "dataset_report", "format_dataset_report",
     "misclassified", "format_errors",
     "bootstrap_ci", "paired_bootstrap", "detector_uncertainty",
+    "brier_score", "reliability_bins", "expected_calibration_error",
+    "maximum_calibration_error", "calibration", "calibration_ci",
+    "detector_calibration",
     "CostEstimate", "estimate_api_cost", "estimate_model_cost",
     "free_cost", "normalized_cost_scores",
 ]

@@ -19,14 +19,17 @@ separate grounded answers from hallucinations, and how closely they approximate
 an LLM judge. Tether contributes an error-type stratified dataset, a set of
 baselines spanning three cost tiers (free lexical heuristics, a local NLI model,
 and a paid LLM judge), agreement metrics against the judge, a cost/accuracy
-frontier that makes the trade-off explicit, and bootstrap confidence intervals
-with paired significance tests so that small leaderboard gaps are not over-read.
+frontier that makes the trade-off explicit, bootstrap confidence intervals with
+paired significance tests so that small leaderboard gaps are not over-read, and a
+calibration analysis of whether the scores can be read as probabilities.
 On a deliberately hard sample, where hallucinations reuse most of the context
 vocabulary and faithful answers paraphrase with few shared tokens, the free
 detectors fall well short: the best reaches only 0.78 AUROC (95% CI 0.64 to
 0.90) and a TF-IDF baseline drops to 0.60, barely above the 0.50 floor. A paired
 bootstrap shows the two best free detectors are statistically tied, while both
-significantly outperform TF-IDF and the floor. The mean lexical overlap separates faithful from hallucinated answers
+significantly outperform TF-IDF and the floor. A calibration analysis adds a
+caution: the detectors that rank best are the worst calibrated, so their raw
+scores order answers well but cannot be read as probabilities. The mean lexical overlap separates faithful from hallucinated answers
 by just 0.16, so surface overlap is not enough, which is where a semantic model
 or an LLM judge earns its cost.
 
@@ -113,6 +116,15 @@ zero. Resamples where the two detectors tie count toward both sides, which keeps
 the test conservative. We also report how many examples the two detectors score
 differently, since a paired comparison can only draw evidence from those.
 
+AUROC and the paired test both concern ranking. We additionally measure
+calibration, which asks whether a faithfulness score of p corresponds to an
+answer that is faithful about p of the time. Reading the score as a predicted
+probability of being faithful, we report the expected calibration error (ECE,
+the bin-count-weighted mean gap between mean score and observed faithful rate
+over ten equal-width bins), the maximum single-bin gap (MCE), and the Brier
+score (mean squared error of the scores as probabilities). ECE carries the same
+stratified bootstrap interval as the AUROC numbers.
+
 ## 6. Results
 
 Leaderboard on the bundled sample (ranked by AUROC, with stratified bootstrap
@@ -133,6 +145,15 @@ Paired bootstrap of the best detector against each of the others:
 | tfidf_cosine | +0.176 | [+0.040, +0.321] | 0.007 | yes | 49/50 |
 | majority_constant | +0.279 | [+0.135, +0.402] | < 0.001 | yes | 48/50 |
 
+Calibration of the faithfulness scores (ECE/MCE/Brier, lower is better):
+
+| Detector | AUROC | ECE | ECE 95% CI | MCE | Brier |
+| --- | --- | --- | --- | --- | --- |
+| majority_constant | 0.500 | 0.000 | [0.000, 0.000] | 0.000 | 0.250 |
+| tfidf_cosine | 0.603 | 0.187 | [0.135, 0.344] | 0.928 | 0.265 |
+| lexical_overlap | 0.763 | 0.304 | [0.242, 0.391] | 1.000 | 0.281 |
+| novel_token | 0.779 | 0.321 | [0.258, 0.399] | 1.000 | 0.288 |
+
 Detection recall by error type (at each detector's F1-optimal threshold):
 
 | Error type | lexical_overlap | novel_token | tfidf_cosine |
@@ -148,7 +169,7 @@ AUROC is 0.50.)
 
 ## 7. Analysis
 
-Three findings stand out.
+Four findings stand out.
 
 First, on a hard dataset the free detectors are not enough. The best, `novel_token`,
 reaches only 0.78 AUROC, and `tfidf_cosine` falls to 0.60, barely above the 0.50
@@ -186,6 +207,20 @@ intervals are wide too, 0.27 to 0.32 AUROC for each non-constant detector, so a
 claim that one cheap detector beats another by a few points needs a larger
 dataset than this one.
 
+Fourth, ranking quality and calibration are different axes, and neither implies
+the other here. `majority_constant` has an ECE of 0.000, the best in the table,
+because a constant 0.5 on a balanced set matches the base rate exactly, yet its
+AUROC is 0.5 and it carries no signal. The detectors that do rank well are the
+worst calibrated: `novel_token` has an ECE of 0.321, and in its 0.6 to 0.7 score
+band only about 14% of answers are actually faithful rather than the roughly 65%
+the score implies. The scores are therefore usable as an ordering but not as
+probabilities; a deployment that thresholds on a raw score and treats it as a
+confidence would be badly miscalibrated and would first need a calibration map
+(for example Platt scaling or isotonic regression) fit on a held-out split.
+`tfidf_cosine` has the lowest point ECE among the signal-carrying detectors
+despite the worst AUROC, but its interval overlaps the others, so it is a hint
+rather than a result.
+
 The cost/accuracy frontier ties this together. Among the free detectors only
 `novel_token` is Pareto-optimal, since the others cost the same and detect less,
 although its edge over `lexical_overlap` is within noise.
@@ -216,9 +251,9 @@ full dataset.
 
 ## 10. Reproducibility
 
-The free-tier results, metrics, frontier, and bootstrap statistics are
-pure-stdlib and deterministic. The bootstrap is seeded, so every interval and
-p-value is identical across runs. Running `python scripts/generate_report.py`
-regenerates `RESULTS.md`, and the test suite (`pytest`) covers the metrics,
-baselines, breakdown, frontier, agreement, bootstrap statistics, and report
-generation offline.
+The free-tier results, metrics, frontier, bootstrap statistics, and calibration
+analysis are pure-stdlib and deterministic. The bootstrap is seeded, so every
+interval and p-value is identical across runs. Running
+`python scripts/generate_report.py` regenerates `RESULTS.md`, and the test suite
+(`pytest`) covers the metrics, baselines, breakdown, frontier, agreement,
+bootstrap statistics, calibration, and report generation offline.

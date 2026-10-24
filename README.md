@@ -111,6 +111,48 @@ unc["vs_best"]["lexical_overlap"]  # diff, lo, hi, p_value, significant, n_diffe
 `bootstrap_ci(labels, scores)` and `paired_bootstrap(labels, scores_a, scores_b)`
 work on raw score lists, so they apply just as well to cached NLI or judge scores.
 
+### Are the scores trustworthy probabilities?
+
+AUROC only measures *ranking*. A separate question is whether a faithfulness
+score of 0.7 means the answer is faithful about 70% of the time — i.e. whether
+the raw score can be read as a probability. The detector interface never
+promises this, and the calibration numbers show it does not hold:
+
+| Detector | AUROC | ECE | ECE 95% CI | MCE | Brier |
+|----------|-------|-----|------------|-----|-------|
+| `majority_constant` | 0.500 | 0.000 | [0.000, 0.000] | 0.000 | 0.250 |
+| `tfidf_cosine` | 0.603 | 0.187 | [0.135, 0.344] | 0.928 | 0.265 |
+| `lexical_overlap` | 0.763 | 0.304 | [0.242, 0.391] | 1.000 | 0.281 |
+| `novel_token` | 0.779 | 0.321 | [0.258, 0.399] | 1.000 | 0.288 |
+
+ECE is the bin-weighted gap between a detector's mean score and the observed
+faithful rate (lower is better); Brier is the mean squared error of the scores
+as probabilities. Two things stand out, and both are warnings against reading
+the column you expect:
+
+- **Calibration is not usefulness.** `majority_constant` has ECE 0.000 — the
+  best-calibrated detector in the table — because on a balanced set a constant
+  0.5 exactly matches the 50% base rate. Its AUROC is still 0.5. A score can be
+  perfectly calibrated and carry no signal.
+- **The useful detectors are badly miscalibrated.** `novel_token` ranks best but
+  has the worst ECE: in its 0.6-0.7 score band only about 14% of answers are
+  actually faithful, not 65%. Reading its raw score as a confidence would be far
+  off. Deploying it as a probability would need a calibration map (Platt or
+  isotonic) fit on a held-out split, not the raw score.
+
+`tfidf_cosine` has the lowest point ECE of the signal-carrying detectors despite
+the worst AUROC, but its CI overlaps the others, so that is a hint rather than a
+result. Best-ranked and best-calibrated are simply different axes.
+
+```python
+from tether import load_sample, default_detectors, detector_calibration
+
+examples = load_sample()
+cal = detector_calibration(default_detectors(examples), examples)
+cal["novel_token"]["ece"]    # expected calibration error
+cal["novel_token"]["bins"]   # reliability bins: mean_score vs frac_faithful
+```
+
 ## Error-type breakdown
 
 Every hallucinated example is annotated with the kind of error it contains, and
@@ -255,7 +297,7 @@ exactly the kind of correction real cost numbers make to the frontier.
 
 ```bash
 pip install -e ".[dev]"
-pytest                          # 159 tests, all stdlib
+pytest                          # 175 tests, all stdlib
 python scripts/run_benchmark.py # prints the leaderboard above
 ```
 
@@ -284,6 +326,7 @@ tether/
   error_analysis.py  # which examples each detector gets wrong (false pos/neg by type)
   cost_model.py      # estimate per-tier $ cost; price the frontier in real units
   stats.py           # stratified bootstrap CIs + paired significance test for leaderboard gaps
+  calibration.py     # reliability bins, Brier, ECE/MCE: are the scores real probabilities?
   baselines/         # majority, lexical, novel-token, tf-idf, nli, llm-judge
 data/sample.jsonl    # bundled labeled dataset (50 examples, runs offline), error-type annotated
 scripts/run_benchmark.py   # prints leaderboard + breakdown + frontier
@@ -292,7 +335,7 @@ scripts/score_detector.py  # score one detector, cache to JSON (HPC job entry po
 PAPER.md                   # working paper draft
 RESULTS.md                 # generated results, cited by the paper
 COMPUTE.md                 # running the NLI/judge tiers on ASU SOL / Gaudi
-tests/               # 159 unit tests
+tests/               # 175 unit tests
 ```
 
 ## Roadmap
@@ -310,7 +353,8 @@ cost/accuracy frontier with Pareto marking; reproducible Markdown report
 score caching so the heavy tiers run once on HPC and the analysis stays offline
 ([COMPUTE.md](COMPUTE.md)); a cost model that prices the frontier in real dollars
 per tier; stratified bootstrap CIs on every AUROC and a paired bootstrap test for
-leaderboard gaps.
+leaderboard gaps; calibration analysis (reliability bins, ECE/MCE, Brier) showing
+the free detectors rank well but are not calibrated probabilities.
 
 ## Reproducibility
 
