@@ -284,6 +284,21 @@ print(judge_agreement(cheap_scores, judge_scores, cheap_threshold=thr))
 hallucinations the judge caught that the cheap detector missed — exactly the gap
 a paid judge is buying.
 
+The judge is not tied to one vendor. `anthropic_judge` calls Claude, but
+`openai_compatible_judge` talks to **any** OpenAI-compatible chat-completions
+gateway using only the standard library (no extra dependency), so a self-hosted
+or institutional gateway serving open-source models can be the judge too. The
+endpoint and key are read from the environment, so nothing provider-specific is
+baked into the repo:
+
+```python
+from tether import LLMJudgeDetector, openai_compatible_judge
+
+# set TETHER_JUDGE_BASE_URL (e.g. a gateway's .../v1) and TETHER_JUDGE_API_KEY
+judge = LLMJudgeDetector(openai_compatible_judge(model="your-model-id"))
+scores = judge.score_all(examples)
+```
+
 The **mid-cost tier** is the NLI detector — same decoupled design, so it's
 mockable in tests and the model is an opt-in dependency
 (`pip install tether-bench[nli]`):
@@ -362,7 +377,7 @@ exactly the kind of correction real cost numbers make to the frontier.
 
 ```bash
 pip install -e ".[dev]"
-pytest                          # 189 tests, all stdlib
+pytest                          # 196 tests, all stdlib
 python scripts/run_benchmark.py # prints the leaderboard above
 ```
 
@@ -402,7 +417,7 @@ out/nli.json         # cached NLI (bart-large-mnli) scores from a SOL run, folde
 PAPER.md                   # working paper draft
 RESULTS.md                 # generated results, cited by the paper
 COMPUTE.md                 # producing the model/api tiers on a GPU and caching them
-tests/               # 189 unit tests
+tests/               # 196 unit tests
 ```
 
 ## Roadmap

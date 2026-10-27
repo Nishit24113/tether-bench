@@ -42,7 +42,13 @@ dependencies, then commit the resulting JSON:
 
 - NLI (`model` tier): needs the `[nli]` extra (a transformers model) and is much
   faster on a GPU. The bundled result used `facebook/bart-large-mnli`.
-- LLM judge (`api` tier): needs the `[llm]` extra and a provider API key.
+- LLM judge (`api` tier): either the Anthropic path (`[llm]` extra +
+  `ANTHROPIC_API_KEY`), or `score_detector.py openai-judge`, which works with any
+  OpenAI-compatible gateway (stdlib only, no extra). The latter reads
+  `TETHER_JUDGE_MODEL`, `TETHER_JUDGE_BASE_URL`, and `TETHER_JUDGE_API_KEY` from
+  the environment, so an institutional gateway serving open-source models can
+  produce the judge tier. Cache it to `out/judge.json` and it folds into the
+  report like the NLI tier.
 
 Because detectors are just scorers, a fine-tuned faithfulness model drops in the
 same way: expose it as an `entail_fn` (or a judge `judge_fn`), wrap it in the

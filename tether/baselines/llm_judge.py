@@ -14,6 +14,7 @@ actually used (`pip install tether-bench[llm]`).
 """
 
 import json
+import os
 import re
 from typing import Callable, Optional, Any
 
@@ -105,6 +106,84 @@ def anthropic_judge(
         text = "".join(
             block.text for block in response.content if block.type == "text"
         )
+        return parse_verdict(text)
+
+    return judge
+
+
+def openai_compatible_judge(
+    model: str,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+    temperature: float = 0.0,
+    max_tokens: int = 256,
+    timeout: float = 60.0,
+    transport: Optional[Callable[[str, dict, dict], dict]] = None,
+) -> JudgeFn:
+    """
+    Build a judge_fn backed by any OpenAI-compatible chat-completions endpoint.
+
+    This talks to a gateway that implements the OpenAI `/chat/completions` schema
+    (many self-hosted and institutional LLM gateways do, including ones that
+    serve open-source models). Nothing provider-specific is hardcoded: point it
+    at a gateway with `base_url` or the `TETHER_JUDGE_BASE_URL` environment
+    variable, and authenticate with `api_key` or `TETHER_JUDGE_API_KEY`.
+
+    Args:
+        model: model id to request, exactly as the gateway expects it.
+        base_url: OpenAI-compatible base (the part before `/chat/completions`,
+            e.g. `.../v1`). Falls back to `TETHER_JUDGE_BASE_URL`.
+        api_key: bearer token. Falls back to `TETHER_JUDGE_API_KEY`.
+        temperature: sampling temperature; 0 keeps the verdict deterministic.
+        max_tokens: output cap; the judge returns a tiny JSON object.
+        timeout: per-request timeout in seconds.
+        transport: optional `(url, payload, headers) -> response_dict` hook. The
+            default uses the stdlib (`urllib`), so there is no extra dependency;
+            tests inject a fake transport to run offline.
+
+    The key and endpoint are read lazily on each call, so the environment can be
+    set after the judge is built.
+    """
+
+    def _default_transport(url: str, payload: dict, headers: dict) -> dict:
+        import urllib.request  # stdlib: no extra dependency
+
+        request = urllib.request.Request(
+            url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST"
+        )
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    send = transport or _default_transport
+
+    def judge(example: Example) -> float:
+        resolved_base = base_url or os.environ.get("TETHER_JUDGE_BASE_URL")
+        resolved_key = api_key or os.environ.get("TETHER_JUDGE_API_KEY")
+        if not resolved_base:
+            raise ValueError(
+                "openai_compatible_judge needs base_url or the TETHER_JUDGE_BASE_URL env var"
+            )
+        if not resolved_key:
+            raise ValueError(
+                "openai_compatible_judge needs api_key or the TETHER_JUDGE_API_KEY env var"
+            )
+
+        url = resolved_base.rstrip("/") + "/chat/completions"
+        payload = {
+            "model": model,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "messages": [
+                {"role": "system", "content": JUDGE_SYSTEM},
+                {"role": "user", "content": _build_prompt(example)},
+            ],
+        }
+        headers = {
+            "Authorization": f"Bearer {resolved_key}",
+            "Content-Type": "application/json",
+        }
+        data = send(url, payload, headers)
+        text = data["choices"][0]["message"]["content"]
         return parse_verdict(text)
 
     return judge

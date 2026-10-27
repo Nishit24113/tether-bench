@@ -6,9 +6,15 @@ score the NLI model or the LLM judge once, write the cache, then run the offline
 analysis anywhere with the cached scores.
 
 Usage:
-    python scripts/score_detector.py lexical  out/lexical.json
-    python scripts/score_detector.py nli      out/nli.json      # needs [nli] extra
-    python scripts/score_detector.py judge    out/judge.json    # needs [llm] + API key
+    python scripts/score_detector.py lexical       out/lexical.json
+    python scripts/score_detector.py nli           out/nli.json     # needs [nli] extra
+    python scripts/score_detector.py judge         out/judge.json   # Anthropic; needs [llm] + ANTHROPIC_API_KEY
+    python scripts/score_detector.py openai-judge  out/judge.json   # any OpenAI-compatible gateway (stdlib, no extra)
+
+The openai-judge path reads these environment variables:
+    TETHER_JUDGE_MODEL      model id to request (required)
+    TETHER_JUDGE_BASE_URL   OpenAI-compatible base, e.g. .../v1 (required)
+    TETHER_JUDGE_API_KEY    bearer token (required)
 """
 
 import sys
@@ -38,7 +44,19 @@ def build_detector(name, examples):
     if name == "judge":
         from tether import LLMJudgeDetector, anthropic_judge
         return LLMJudgeDetector(anthropic_judge())
-    raise SystemExit(f"Unknown detector '{name}'. Choose: majority, lexical, novel, tfidf, nli, judge")
+    if name == "openai-judge":
+        from tether import LLMJudgeDetector, openai_compatible_judge
+        model = os.environ.get("TETHER_JUDGE_MODEL")
+        if not model:
+            raise SystemExit(
+                "openai-judge needs TETHER_JUDGE_MODEL (plus TETHER_JUDGE_BASE_URL and TETHER_JUDGE_API_KEY)"
+            )
+        # Keep the detector name 'llm_judge' so it lands in the api tier and the
+        # cached scores fold into the report like any other judge run.
+        return LLMJudgeDetector(openai_compatible_judge(model=model))
+    raise SystemExit(
+        f"Unknown detector '{name}'. Choose: majority, lexical, novel, tfidf, nli, judge, openai-judge"
+    )
 
 
 def main(argv=None):
