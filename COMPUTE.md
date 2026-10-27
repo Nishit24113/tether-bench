@@ -1,19 +1,21 @@
-# Running the heavy tiers (HPC / ASU SOL)
+# Producing the heavy tiers (GPU)
 
 The free detectors run anywhere in milliseconds. The `model` tier (NLI) and the
-`api` tier (LLM judge) are heavier: NLI wants a GPU or accelerator to be fast,
-and the judge costs money per call. The workflow below runs those once, caches
-their per-example scores, and keeps all analysis offline and reproducible.
+`api` tier (LLM judge) are heavier: NLI wants a GPU to be fast, and the judge
+costs money per call. The workflow below runs those once, caches their
+per-example scores, and keeps all downstream analysis offline and reproducible.
+
+The committed `model`-tier scores (`out/nli.json`,
+`facebook/bart-large-mnli`) were produced on a GPU (an ASU SOL node). Only the
+resulting per-example scores are stored; no environment or cluster details are
+needed to reuse them.
 
 ## The idea: compute once, analyze anywhere
 
-1. On a machine with the model or API access, score a detector and cache it:
-   ```bash
-   python scripts/score_detector.py nli   out/nli.json
-   python scripts/score_detector.py judge out/judge.json
-   ```
-   Each run writes `{detector, meta, scores: {example_id: score}}`. Runs resume:
-   only example ids missing from the cache are recomputed.
+1. On a machine with the model or API access, score a detector once and cache
+   its per-example scores to JSON. `scripts/score_detector.py` is the entry
+   point; it writes `{detector, meta, scores: {example_id: score}}` and resumes,
+   recomputing only example ids missing from the cache.
 
 2. Anywhere else (laptop, CI), fold the cached scores back into the analysis
    with no model and no API key:
@@ -28,61 +30,29 @@ their per-example scores, and keeps all analysis offline and reproducible.
    bench = run_benchmark(detectors, examples)
    ```
 
-This keeps the paper's numbers reproducible: the expensive scores are frozen in
-JSON and version-controllable, so the leaderboard, breakdown, and frontier are
-recomputed deterministically from them.
+`scripts/generate_report.py` does this automatically: any cache files present
+under `out/` are folded into `RESULTS.md`, so the model/api tiers appear with no
+model download and the numbers are recomputed deterministically from the frozen
+JSON.
 
-## ASU SOL (Slurm)
+## Running a heavy tier yourself
 
-[ASU SOL](https://cores.research.asu.edu/research-computing/) is a Slurm cluster
-with GPU and Intel Gaudi accelerator partitions. Submit the scoring job, then
-pull the cache back for offline analysis.
+Run `score_detector.py` for the tier you want on any machine that has the
+dependencies, then commit the resulting JSON:
 
-```bash
-#!/bin/bash
-#SBATCH --job-name=tether-nli
-#SBATCH --partition=general          # or a GPU/Gaudi partition
-#SBATCH --gres=gpu:1
-#SBATCH --time=00:30:00
-#SBATCH --mem=16G
-
-module load mamba/latest
-source activate tether
-
-pip install -e ".[nli]"              # transformers + torch
-python scripts/score_detector.py nli out/nli.json
-```
-
-```bash
-sbatch run_nli.slurm
-# when it finishes, out/nli.json holds the cached scores
-```
-
-### Intel Gaudi
-
-On a Gaudi partition, load the model through the Habana stack
-(`habana-frameworks` / `optimum-habana`) and move it to the HPU device. The NLI
-detector is provider-decoupled, so only the model-loading `entail_fn` changes;
-the rest of the pipeline is unchanged. Sketch:
-
-```python
-import torch
-from optimum.habana import ...  # Habana / HPU runtime
-# load the NLI model onto the HPU, then wrap it in an entail_fn and pass it to
-# NLIEntailmentDetector(entail_fn=...). Everything downstream is identical.
-```
-
-## Fine-tuning (optional)
+- NLI (`model` tier): needs the `[nli]` extra (a transformers model) and is much
+  faster on a GPU. The bundled result used `facebook/bart-large-mnli`.
+- LLM judge (`api` tier): needs the `[llm]` extra and a provider API key.
 
 Because detectors are just scorers, a fine-tuned faithfulness model drops in the
-same way: train on SOL, expose it as an `entail_fn` (or a judge `judge_fn`), wrap
-it in the matching detector, and it slots onto the cost/accuracy frontier next to
-the off-the-shelf baselines. This is a natural way to ask whether a small
-fine-tuned model can match the LLM judge at a fraction of the cost, which is the
-benchmark's whole question.
+same way: expose it as an `entail_fn` (or a judge `judge_fn`), wrap it in the
+matching detector, and it slots onto the cost/accuracy frontier next to the
+off-the-shelf baselines. This is a natural way to ask whether a small fine-tuned
+model can match the LLM judge at a fraction of the cost, which is the benchmark's
+whole question.
 
 ## Cost note
 
 The frontier uses relative per-tier cost scores by default. Once you have
-measured dollar and latency numbers from the SOL and API runs, override
+measured dollar and latency numbers from the model and API runs, override
 `COST_SCORE` so the frontier is priced in real units.

@@ -401,7 +401,7 @@ scripts/score_detector.py  # score one detector, cache to JSON (HPC job entry po
 out/nli.json         # cached NLI (bart-large-mnli) scores from a SOL run, folded into the report
 PAPER.md                   # working paper draft
 RESULTS.md                 # generated results, cited by the paper
-COMPUTE.md                 # running the NLI/judge tiers on ASU SOL / Gaudi
+COMPUTE.md                 # producing the model/api tiers on a GPU and caching them
 tests/               # 189 unit tests
 ```
 
