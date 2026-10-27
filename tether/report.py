@@ -15,6 +15,7 @@ from .harness import run_benchmark, run_category_breakdown
 from .frontier import build_frontier
 from .stats import detector_uncertainty
 from .calibration import detector_calibration, calibration_ci
+from .validation import detector_validation
 
 
 def _md_table(headers: List[str], rows: List[List[str]]) -> str:
@@ -79,6 +80,20 @@ def calibration_markdown(cal: Dict[str, Any], labels, scores) -> str:
     return _md_table(headers, rows)
 
 
+def validation_markdown(val: Dict[str, Any]) -> str:
+    """
+    Oracle vs cross-validated F1 per detector, ordered by cross-validated F1.
+    `val` is detector_validation(...).
+    """
+    headers = ["Detector", "Oracle F1", "CV F1", "Optimism", "CV precision", "CV recall"]
+    rows = [
+        [name, f"{v['oracle_f1']:.3f}", f"{v['cv_f1']:.3f}", f"{v['optimism_gap']:+.3f}",
+         f"{v['cv_precision']:.3f}", f"{v['cv_recall']:.3f}"]
+        for name, v in sorted(val.items(), key=lambda kv: kv[1]["cv_f1"], reverse=True)
+    ]
+    return _md_table(headers, rows)
+
+
 def breakdown_markdown(breakdowns: Dict[str, Any]) -> str:
     """
     Per-error-type detection recall as a Markdown table (rows = error types,
@@ -131,6 +146,7 @@ def generate_report(
     frontier = build_frontier(benchmark["leaderboard"], metric=metric)
     unc = detector_uncertainty(detectors, examples)
     cal = detector_calibration(detectors, examples)
+    val = detector_validation(detectors, examples)
     labels = [e.label for e in examples]
     cal_scores = {d.name: d.score_all(examples) for d in detectors}
     bal = class_balance(examples)
@@ -170,6 +186,19 @@ def generate_report(
         "CI is a stratified bootstrap (2000 resamples, seed 0).",
         "",
         calibration_markdown(cal, labels, cal_scores),
+        "",
+        "## How optimistic is the F1?",
+        "",
+        "The leaderboard F1 uses each detector's F1-optimal threshold, tuned on "
+        "the same data it is scored on, so it is an oracle operating point. The "
+        f"table below re-estimates F1 with {val['novel_token']['k']}-fold "
+        "stratified cross-validation (seed "
+        f"{val['novel_token']['seed']}): the threshold is chosen on the training "
+        "folds and applied to the held-out fold, so every example is predicted "
+        "by a threshold it did not help pick. The optimism column is how much the "
+        "oracle F1 overstates the cross-validated one.",
+        "",
+        validation_markdown(val),
         "",
         "## Detection recall by error type",
         "",

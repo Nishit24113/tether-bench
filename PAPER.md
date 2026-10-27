@@ -20,8 +20,9 @@ an LLM judge. Tether contributes an error-type stratified dataset, a set of
 baselines spanning three cost tiers (free lexical heuristics, a local NLI model,
 and a paid LLM judge), agreement metrics against the judge, a cost/accuracy
 frontier that makes the trade-off explicit, bootstrap confidence intervals with
-paired significance tests so that small leaderboard gaps are not over-read, and a
-calibration analysis of whether the scores can be read as probabilities.
+paired significance tests so that small leaderboard gaps are not over-read, a
+calibration analysis of whether the scores can be read as probabilities, and
+cross-validated operating points that measure how optimistic the reported F1 is.
 On a deliberately hard sample, where hallucinations reuse most of the context
 vocabulary and faithful answers paraphrase with few shared tokens, the free
 detectors fall well short: the best reaches only 0.78 AUROC (95% CI 0.64 to
@@ -100,7 +101,13 @@ dependencies stay optional.
 
 AUROC is the primary metric because it is threshold-free and reflects a
 detector's intrinsic ability to separate the two classes. We also report F1 at
-each detector's F1-optimal threshold as an operating-point view. To answer the
+each detector's F1-optimal threshold as an operating-point view. That threshold
+is tuned on the same data it is scored on, so the F1 is an oracle operating
+point and is optimistic. To measure the optimism we additionally report a
+cross-validated F1: with 5-fold stratified cross-validation the threshold is
+chosen on the training folds and applied to the held-out fold, so every example
+is scored by a threshold it did not help select, and we pool the held-out
+predictions into one honest F1. To answer the
 central question we compute agreement between a cheap detector and the judge on
 the binary hallucination decision, using both raw agreement rate and Cohen's
 kappa, which corrects for chance agreement.
@@ -154,6 +161,16 @@ Calibration of the faithfulness scores (ECE/MCE/Brier, lower is better):
 | lexical_overlap | 0.763 | 0.304 | [0.242, 0.391] | 1.000 | 0.281 |
 | novel_token | 0.779 | 0.321 | [0.258, 0.399] | 1.000 | 0.288 |
 
+Oracle vs 5-fold cross-validated F1 (seed 0), with the optimism the oracle
+threshold hides:
+
+| Detector | Oracle F1 | CV F1 | Optimism | CV precision | CV recall |
+| --- | --- | --- | --- | --- | --- |
+| novel_token | 0.774 | 0.733 | +0.041 | 0.629 | 0.880 |
+| lexical_overlap | 0.762 | 0.721 | +0.041 | 0.611 | 0.880 |
+| majority_constant | 0.667 | 0.667 | +0.000 | 0.500 | 1.000 |
+| tfidf_cosine | 0.676 | 0.629 | +0.047 | 0.489 | 0.880 |
+
 Detection recall by error type (at each detector's F1-optimal threshold):
 
 | Error type | lexical_overlap | novel_token | tfidf_cosine |
@@ -169,7 +186,7 @@ AUROC is 0.50.)
 
 ## 7. Analysis
 
-Four findings stand out.
+Five findings stand out.
 
 First, on a hard dataset the free detectors are not enough. The best, `novel_token`,
 reaches only 0.78 AUROC, and `tfidf_cosine` falls to 0.60, barely above the 0.50
@@ -221,6 +238,18 @@ confidence would be badly miscalibrated and would first need a calibration map
 despite the worst AUROC, but its interval overlaps the others, so it is a hint
 rather than a result.
 
+Fifth, the reported F1 is mildly optimistic. Because its threshold is tuned on
+the same data it is scored on, the leaderboard F1 overstates the cross-validated
+F1 by about 0.04 for the signal-carrying detectors (`novel_token` 0.774 to
+0.733, `lexical_overlap` 0.762 to 0.721, `tfidf_cosine` 0.676 to 0.629).
+`majority_constant` shows no gap because it flags every answer at any threshold,
+so there is nothing to overfit. The gap is small here because the F1-optimal
+threshold is stable across folds, but at this sample size the cross-validated
+estimate is itself noisy, moving between roughly 0.04 and 0.09 with the fold
+seed, so the honest operating-point number should be read as a range, not a
+point. This is the operating-point analogue of the wide AUROC intervals: the
+small dataset limits what any single number can claim.
+
 The cost/accuracy frontier ties this together. Among the free detectors only
 `novel_token` is Pareto-optimal, since the others cost the same and detect less,
 although its edge over `lexical_overlap` is within noise.
@@ -234,7 +263,8 @@ ladder actually buys.
 The dataset is small and hand-written, which keeps it reproducible but limits
 statistical power and domain coverage. The bootstrap makes the cost in power
 explicit: the 95% AUROC intervals span 0.27 to 0.32, too wide to separate
-detectors a few points apart. The error types are a coarse taxonomy.
+detectors a few points apart, and the cross-validated F1 swings by several
+points with the fold seed. The error types are a coarse taxonomy.
 The live NLI and LLM paths are not exercised in continuous integration, since
 they require a model download or API access, so the committed results cover the
 free tier. Absolute cost is represented by relative per-tier scores rather than
@@ -256,4 +286,5 @@ analysis are pure-stdlib and deterministic. The bootstrap is seeded, so every
 interval and p-value is identical across runs. Running
 `python scripts/generate_report.py` regenerates `RESULTS.md`, and the test suite
 (`pytest`) covers the metrics, baselines, breakdown, frontier, agreement,
-bootstrap statistics, calibration, and report generation offline.
+bootstrap statistics, calibration, cross-validated operating points, and report
+generation offline.

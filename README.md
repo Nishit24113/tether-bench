@@ -153,6 +153,38 @@ cal["novel_token"]["ece"]    # expected calibration error
 cal["novel_token"]["bins"]   # reliability bins: mean_score vs frac_faithful
 ```
 
+### How optimistic is the reported F1?
+
+The F1 above is measured at each detector's F1-optimal threshold, picked on the
+same 50 examples it is then scored on. That is an oracle operating point: a
+deployment has to fix its threshold first. To measure the optimism, Tether
+re-estimates F1 with 5-fold stratified cross-validation, choosing the threshold
+on the training folds and scoring on the held-out fold:
+
+| Detector | Oracle F1 | CV F1 | Optimism | CV precision | CV recall |
+|----------|-----------|-------|----------|--------------|-----------|
+| `novel_token` | 0.774 | 0.733 | +0.041 | 0.629 | 0.880 |
+| `lexical_overlap` | 0.762 | 0.721 | +0.041 | 0.611 | 0.880 |
+| `majority_constant` | 0.667 | 0.667 | +0.000 | 0.500 | 1.000 |
+| `tfidf_cosine` | 0.676 | 0.629 | +0.047 | 0.489 | 0.880 |
+
+The oracle F1 overstates the honest, held-out number by about 0.04 for the
+signal-carrying detectors. `majority_constant` has no gap because it flags every
+answer at any threshold, so there is nothing to tune. The gap is modest here
+because the F1-optimal threshold is stable across folds (~0.87 for the lexical
+detectors), but at this sample size the cross-validated estimate is itself noisy:
+the gap moves between about 0.04 and 0.09 depending on the fold seed, which is
+one more reason the dataset needs to grow.
+
+```python
+from tether import load_sample, default_detectors, detector_validation
+
+examples = load_sample()
+val = detector_validation(default_detectors(examples), examples, k=5, seed=0)
+val["novel_token"]["cv_f1"]          # pooled held-out F1
+val["novel_token"]["optimism_gap"]   # oracle F1 minus cross-validated F1
+```
+
 ## Error-type breakdown
 
 Every hallucinated example is annotated with the kind of error it contains, and
@@ -297,7 +329,7 @@ exactly the kind of correction real cost numbers make to the frontier.
 
 ```bash
 pip install -e ".[dev]"
-pytest                          # 175 tests, all stdlib
+pytest                          # 187 tests, all stdlib
 python scripts/run_benchmark.py # prints the leaderboard above
 ```
 
@@ -327,6 +359,7 @@ tether/
   cost_model.py      # estimate per-tier $ cost; price the frontier in real units
   stats.py           # stratified bootstrap CIs + paired significance test for leaderboard gaps
   calibration.py     # reliability bins, Brier, ECE/MCE: are the scores real probabilities?
+  validation.py      # k-fold cross-validated F1 vs oracle F1: how optimistic is the threshold?
   baselines/         # majority, lexical, novel-token, tf-idf, nli, llm-judge
 data/sample.jsonl    # bundled labeled dataset (50 examples, runs offline), error-type annotated
 scripts/run_benchmark.py   # prints leaderboard + breakdown + frontier
@@ -335,7 +368,7 @@ scripts/score_detector.py  # score one detector, cache to JSON (HPC job entry po
 PAPER.md                   # working paper draft
 RESULTS.md                 # generated results, cited by the paper
 COMPUTE.md                 # running the NLI/judge tiers on ASU SOL / Gaudi
-tests/               # 175 unit tests
+tests/               # 187 unit tests
 ```
 
 ## Roadmap
@@ -354,7 +387,9 @@ score caching so the heavy tiers run once on HPC and the analysis stays offline
 ([COMPUTE.md](COMPUTE.md)); a cost model that prices the frontier in real dollars
 per tier; stratified bootstrap CIs on every AUROC and a paired bootstrap test for
 leaderboard gaps; calibration analysis (reliability bins, ECE/MCE, Brier) showing
-the free detectors rank well but are not calibrated probabilities.
+the free detectors rank well but are not calibrated probabilities; k-fold
+cross-validated operating points that quantify how much the oracle-threshold F1
+overstates the honest held-out F1.
 
 ## Reproducibility
 

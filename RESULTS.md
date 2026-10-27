@@ -34,6 +34,17 @@ AUROC only asks whether a detector *ranks* faithful answers above hallucinated o
 | lexical_overlap | 0.304 | [0.242, 0.391] | 1.000 | 0.281 |
 | novel_token | 0.321 | [0.258, 0.399] | 1.000 | 0.288 |
 
+## How optimistic is the F1?
+
+The leaderboard F1 uses each detector's F1-optimal threshold, tuned on the same data it is scored on, so it is an oracle operating point. The table below re-estimates F1 with 5-fold stratified cross-validation (seed 0): the threshold is chosen on the training folds and applied to the held-out fold, so every example is predicted by a threshold it did not help pick. The optimism column is how much the oracle F1 overstates the cross-validated one.
+
+| Detector | Oracle F1 | CV F1 | Optimism | CV precision | CV recall |
+| --- | --- | --- | --- | --- | --- |
+| novel_token | 0.774 | 0.733 | +0.041 | 0.629 | 0.880 |
+| lexical_overlap | 0.762 | 0.721 | +0.041 | 0.611 | 0.880 |
+| majority_constant | 0.667 | 0.667 | +0.000 | 0.500 | 1.000 |
+| tfidf_cosine | 0.676 | 0.629 | +0.047 | 0.489 | 0.880 |
+
 ## Detection recall by error type
 
 Recall of hallucination detection, per annotated error type, at each detector's F1-optimal threshold.

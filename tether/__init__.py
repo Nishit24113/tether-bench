@@ -68,6 +68,11 @@ from .calibration import (
     calibration_ci,
     detector_calibration,
 )
+from .validation import (
+    stratified_folds,
+    cross_val_operating_point,
+    detector_validation,
+)
 from .cost_model import (
     CostEstimate,
     estimate_api_cost,
@@ -100,6 +105,7 @@ __all__ = [
     "brier_score", "reliability_bins", "expected_calibration_error",
     "maximum_calibration_error", "calibration", "calibration_ci",
     "detector_calibration",
+    "stratified_folds", "cross_val_operating_point", "detector_validation",
     "CostEstimate", "estimate_api_cost", "estimate_model_cost",
     "free_cost", "normalized_cost_scores",
 ]
