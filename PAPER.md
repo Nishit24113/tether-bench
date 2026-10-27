@@ -32,11 +32,14 @@ significantly outperform TF-IDF and the floor. A calibration analysis adds a
 caution: the detectors that rank best are the worst calibrated, so their raw
 scores order answers well but cannot be read as probabilities. The mean lexical overlap separates faithful from hallucinated answers
 by just 0.16, so surface overlap is not enough, which is where a semantic model
-or an LLM judge earns its cost. A local NLI model at the mid-cost tier, run once
-on a GPU cluster and cached for offline reproduction, bears this out: it
-separates the classes perfectly on the sample (AUROC 1.000) and is well
-calibrated, which both validates the cost tier and shows the fifty-example set is
-no longer hard enough to challenge a semantic model, motivating a larger and more
+or an LLM judge earns its cost. Both higher tiers bear this out: a local NLI
+model (run on a GPU) and an LLM judge (a Qwen3 model queried over an
+OpenAI-compatible gateway), each cached for offline reproduction, separate the
+classes perfectly on the sample (AUROC 1.000) and are well calibrated. The NLI
+model agrees with the judge on 98% of answers (Cohen's kappa 0.96), and because
+it matches the judge's quality at far lower cost the paid judge is not
+Pareto-optimal. That both tiers saturate shows the fifty-example set is no longer
+hard enough to challenge a semantic model, motivating a larger and more
 adversarial dataset as the central next step.
 
 ## 1. Introduction
@@ -100,11 +103,14 @@ Tether groups detectors into three cost tiers:
 
 The NLI and LLM detectors are provider-decoupled. Each takes an injected scoring
 function, so the benchmark runs offline with deterministic fakes and the heavy
-dependencies stay optional. For the results below the NLI tier is run for real:
-`facebook/bart-large-mnli` is scored once on ASU's Sol cluster and its
-per-example scores are cached to JSON and committed, so the model-tier row is
-reproducible with no model download. The LLM judge tier is wired but not run
-here, as it requires a paid key.
+dependencies stay optional. For the results below both heavy tiers are run for
+real. `facebook/bart-large-mnli` is scored once on a GPU for the model tier, and
+the judge tier is a Qwen3 model (`qwen38-27b`) queried over an OpenAI-compatible
+gateway using only the standard library. Both detectors' per-example scores are
+cached to JSON and committed, so the model-tier and api-tier rows are
+reproducible with no model download and no API call. The judge endpoint and
+credentials are supplied through the environment, so nothing provider-specific
+is embedded in the benchmark.
 
 ## 5. Metrics
 
@@ -149,17 +155,19 @@ Leaderboard on the bundled sample (ranked by AUROC, with stratified bootstrap
 | Detector | Cost | AUROC | AUROC 95% CI | F1 | Precision | Recall | Accuracy |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | nli_entailment | model | 1.000 | [1.000, 1.000] | 1.000 | 1.000 | 1.000 | 1.000 |
+| llm_judge | api | 1.000 | [1.000, 1.000] | 1.000 | 1.000 | 1.000 | 1.000 |
 | novel_token | free | 0.779 | [0.635, 0.902] | 0.774 | 0.649 | 0.960 | 0.720 |
 | lexical_overlap | free | 0.763 | [0.614, 0.890] | 0.762 | 0.632 | 0.960 | 0.700 |
 | tfidf_cosine | free | 0.603 | [0.435, 0.758] | 0.676 | 0.510 | 1.000 | 0.520 |
 | majority_constant | free | 0.500 | [0.500, 0.500] | 0.667 | 0.500 | 1.000 | 0.500 |
 
-The NLI numbers come from a cached run of `facebook/bart-large-mnli` on ASU's
-Sol cluster; the per-example scores are committed so the row is reproducible
-offline. The NLI detector beats every free detector by a large and significant
-margin (paired bootstrap, all p < 0.001), so the interesting paired comparisons
-are within the free tier. Taking novel_token, the best free detector, as the
-reference:
+The NLI numbers come from a cached run of `facebook/bart-large-mnli` on a GPU;
+the judge numbers from a cached run of a Qwen3 model (`qwen38-27b`) served over
+an OpenAI-compatible gateway. Both detectors' per-example scores are committed so
+their rows are reproducible offline. Each beats every free detector by a large
+and significant margin (paired bootstrap, all p < 0.001), so the interesting
+paired comparisons are within the free tier. Taking novel_token, the best free
+detector, as the reference:
 
 | novel_token vs | AUROC diff | 95% CI | p-value | Significant | Examples scored differently |
 | --- | --- | --- | --- | --- | --- |
@@ -171,7 +179,8 @@ Calibration of the faithfulness scores (ECE/MCE/Brier, lower is better):
 
 | Detector | AUROC | ECE | ECE 95% CI | MCE | Brier |
 | --- | --- | --- | --- | --- | --- |
-| nli_entailment | 1.000 | 0.009 | [0.000, 0.028] | 0.263 | 0.001 |
+| nli_entailment | 1.000 | 0.009 | [0.002, 0.019] | 0.263 | 0.001 |
+| llm_judge | 1.000 | 0.029 | [0.012, 0.060] | 0.720 | 0.011 |
 | majority_constant | 0.500 | 0.000 | [0.000, 0.000] | 0.000 | 0.250 |
 | tfidf_cosine | 0.603 | 0.187 | [0.135, 0.344] | 0.928 | 0.265 |
 | lexical_overlap | 0.763 | 0.304 | [0.242, 0.391] | 1.000 | 0.281 |
@@ -183,10 +192,22 @@ threshold hides:
 | Detector | Oracle F1 | CV F1 | Optimism | CV precision | CV recall |
 | --- | --- | --- | --- | --- | --- |
 | nli_entailment | 1.000 | 1.000 | +0.000 | 1.000 | 1.000 |
+| llm_judge | 1.000 | 0.980 | +0.020 | 0.962 | 1.000 |
 | novel_token | 0.774 | 0.733 | +0.041 | 0.629 | 0.880 |
 | lexical_overlap | 0.762 | 0.721 | +0.041 | 0.611 | 0.880 |
 | majority_constant | 0.667 | 0.667 | +0.000 | 0.500 | 1.000 |
 | tfidf_cosine | 0.676 | 0.629 | +0.047 | 0.489 | 0.880 |
+
+Agreement of each detector with the judge on the binary hallucination call
+(cheap detectors at their F1-optimal threshold, judge at 0.5), ordered by kappa:
+
+| Detector vs judge | Agreement | Cohen's kappa | Judge-only catches | Cheap-only flags |
+| --- | --- | --- | --- | --- |
+| nli_entailment | 0.980 | 0.960 | 1 | 0 |
+| novel_token | 0.740 | 0.470 | 1 | 12 |
+| lexical_overlap | 0.720 | 0.428 | 1 | 13 |
+| tfidf_cosine | 0.540 | 0.043 | 0 | 23 |
+| majority_constant | 0.520 | 0.000 | 0 | 24 |
 
 Detection recall by error type (at each detector's F1-optimal threshold):
 
@@ -267,29 +288,39 @@ seed, so the honest operating-point number should be read as a range, not a
 point. This is the operating-point analogue of the wide AUROC intervals: the
 small dataset limits what any single number can claim.
 
-Sixth, the semantic mid tier earns its cost, and emphatically so. The NLI model,
-which scores entailment rather than word overlap, separates the two classes
-perfectly on this sample: AUROC, F1, and accuracy are all 1.000, it beats every
-free detector with p < 0.001, and unlike the free detectors it is also
-well calibrated (ECE 0.009, Brier 0.001), so its entailment probability can be
-read as a confidence. This is the benchmark's thesis realized: the
-vocabulary-reusing errors that defeat surface overlap are exactly what a semantic
-model catches. The result carries an immediate caveat, though. A perfect score on
-fifty hand-written examples does not mean NLI solves faithfulness detection; it
-means this dataset is no longer hard enough to find where an off-the-shelf NLI
-model fails. The benchmark has saturated at the mid tier, which turns the headline
-result into a mandate for a larger and more adversarial dataset.
+Sixth, the semantic tiers earn their cost, and emphatically so. Both the NLI
+model, which scores entailment rather than word overlap, and the LLM judge
+separate the two classes perfectly on this sample: AUROC, F1, and accuracy all
+1.000, each beating every free detector with p < 0.001. Unlike the free
+detectors they are also well calibrated (NLI ECE 0.009, judge ECE 0.029), so
+their scores can be read as confidences. This is the benchmark's thesis
+realized: the vocabulary-reusing errors that defeat surface overlap are exactly
+what a semantic model or a judge catches. The agreement analysis sharpens the
+"how closely does a cheap detector track the judge" question the benchmark is
+built around. The NLI model agrees with the judge on 98% of answers (Cohen's
+kappa 0.96), effectively reproducing it. The best free detectors reach only
+moderate agreement (kappa 0.47 and 0.43), and their shortfall is one-sided: they
+raise 12 to 13 false alarms the judge rejects while missing almost nothing the
+judge catches, so the cheap detectors over-flag faithful paraphrases rather than
+letting hallucinations through. TF-IDF and the constant floor agree with the
+judge no better than chance. The result carries an immediate caveat, though: a
+perfect score from both heavy tiers on fifty hand-written examples does not mean
+the task is solved; it means this dataset is no longer hard enough to find where
+an off-the-shelf semantic model or judge fails. The benchmark has saturated
+above the free tier, which turns the headline result into a mandate for a larger
+and more adversarial dataset.
 
-The cost/accuracy frontier ties this together. Two detectors are Pareto-optimal:
-`novel_token`, the cheapest useful option, and `nli_entailment`, the highest
-quality. Among the free detectors only `novel_token` is on the frontier, since
-the others cost the same and detect less, although its edge over `lexical_overlap`
-is within noise. The single step up from the free tier to the NLI model buys the
-jump from 0.78 to 1.00 AUROC on this sample, and an LLM judge, once run with a
-key, would extend the ladder further. The research payoff is the shape of that
-staircase, which quantifies how much AUROC each step up the cost ladder actually
-buys; here the mid step buys a great deal, precisely because the dataset is built
-around the errors overlap cannot see.
+The cost/accuracy frontier ties this together, and delivers the study's sharpest
+single result. Two detectors are Pareto-optimal: `novel_token`, the cheapest
+useful option, and `nli_entailment`, which reaches the top quality at the lowest
+cost that attains it. The single step up from the free tier to the NLI model
+buys the jump from 0.78 to 1.00 AUROC. The paid `llm_judge` is pointedly *not*
+on the frontier: it matches the NLI model's perfect quality at higher cost, so
+the cheaper local model dominates it, and on this dataset a practitioner would
+never pay for the judge. The research payoff is the shape of that staircase,
+which quantifies how much AUROC each step up the cost ladder actually buys; here
+the free-to-model step buys everything and the model-to-api step buys nothing,
+precisely because the dataset is built around the errors overlap cannot see.
 
 ## 8. Limitations
 
@@ -298,36 +329,38 @@ statistical power and domain coverage. The bootstrap makes the cost in power
 explicit: the 95% AUROC intervals span 0.27 to 0.32, too wide to separate
 detectors a few points apart, and the cross-validated F1 swings by several
 points with the fold seed. The error types are a coarse taxonomy. The clearest
-limitation is now the dataset's difficulty ceiling: the NLI model reaches a
-perfect AUROC, so the sample no longer discriminates among capable semantic
-models and the measured frontier saturates at the mid tier. The NLI scores are
-produced on a cluster and cached rather than recomputed in continuous
-integration, since the model requires a GPU and a download; the committed JSON
-makes that row reproducible offline, but the live path is not exercised in CI.
-The LLM judge tier is not run here because it needs a paid key. Absolute cost is
-represented by relative per-tier scores rather than measured dollars.
+limitation is now the dataset's difficulty ceiling: both the NLI model and the
+LLM judge reach a perfect AUROC, so the sample no longer discriminates among
+capable semantic models and the measured frontier saturates above the free tier.
+The NLI and judge scores are produced once (on a GPU and over a hosted gateway
+respectively) and cached rather than recomputed in continuous integration; the
+committed JSON makes those rows reproducible offline, but the live paths are not
+exercised in CI. Absolute cost is represented by relative per-tier scores rather
+than measured dollars, which is why the judge's dominance by the NLI model is a
+statement about quality-per-tier rather than a precise dollar comparison.
 
 ## 9. Future Work
 
 The most pressing next step is a larger and harder dataset with annotated
 unsupported spans, built to be adversarial for semantic models and not only for
 surface overlap, so that it both resolves the gaps the current intervals leave
-open and pushes the NLI tier off its perfect score to reveal where it fails.
-Beyond that: measured dollar and latency costs for the model and API tiers, more
-baselines in the mid-cost tier (embedding similarity, smaller NLI models),
-running the LLM judge and reporting an agreement study between the cheap
-detectors and the judge across the full dataset, and recovering the free-tier
-calibration with a fitted calibration map so the cheap scores become usable
-probabilities.
+open and pushes the NLI and judge tiers off their perfect scores to reveal where
+they fail and whether they then diverge. Beyond that: measured dollar and latency
+costs for the model and API tiers (which would turn the "NLI dominates the judge"
+result from a per-tier statement into a priced one), more baselines in the
+mid-cost tier (embedding similarity, smaller NLI models), and recovering the
+free-tier calibration with a fitted calibration map so the cheap scores become
+usable probabilities.
 
 ## 10. Reproducibility
 
 The free-tier results, metrics, frontier, bootstrap statistics, and calibration
 analysis are pure-stdlib and deterministic. The bootstrap is seeded, so every
-interval and p-value is identical across runs. The model-tier (NLI) scores are
-computed once on a cluster and cached to `out/nli.json`, which is committed, so
-`python scripts/generate_report.py` folds them into `RESULTS.md` with no model
-download and the model-tier numbers are reproducible offline like the rest. The
+interval and p-value is identical across runs. The model-tier (NLI) and api-tier
+(judge) scores are computed once and cached to `out/nli.json` and
+`out/judge.json`, which are committed, so `python scripts/generate_report.py`
+folds them into `RESULTS.md` with no model download and no API call, and the
+model and api numbers are reproducible offline like the rest. The
 test suite (`pytest`) covers the metrics, baselines, breakdown, frontier,
 agreement, bootstrap statistics, calibration, cross-validated operating points,
 and report generation offline.

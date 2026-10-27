@@ -56,10 +56,11 @@ class is *hallucinated* — the thing we want to catch.
 | `nli_entailment` | model | A local NLI model scores whether the context entails the answer — the mid-cost tier |
 | `llm_judge` | api | A strong model (default `claude-opus-5-5`) judges faithfulness — the reference the cheap detectors are measured against |
 
-The `free` and `model` tiers are populated with real numbers (the NLI scores
-come from a cached run of `facebook/bart-large-mnli`; see
-[COMPUTE.md](COMPUTE.md)). The `api` judge tier is wired but not run here, since
-it needs a paid key.
+All three tiers are populated with real numbers. The NLI scores come from a
+cached run of `facebook/bart-large-mnli`; the judge scores come from a cached
+run of a Qwen3 model (`qwen38-27b`) served over an OpenAI-compatible gateway.
+Both are stored as per-example scores and folded into the report offline (see
+[COMPUTE.md](COMPUTE.md)).
 
 ## Results on the bundled sample (n=50, balanced)
 
@@ -67,6 +68,7 @@ it needs a paid key.
 detector           cost   auroc   f1      precision  recall  accuracy
 -----------------  -----  ------  ------  ---------  ------  --------
 nli_entailment     model  1.000   1.000   1.000      1.000   1.000
+llm_judge          api    1.000   1.000   1.000      1.000   1.000
 novel_token        free   0.779   0.774   0.649      0.960   0.720
 lexical_overlap    free   0.763   0.762   0.632      0.960   0.700
 tfidf_cosine       free   0.603   0.676   0.510      1.000   0.520
@@ -91,6 +93,12 @@ also carries a caution, stated plainly in the limitations: a perfect score means
 this 50-example set is no longer hard enough to find where even an off-the-shelf
 NLI model fails, so the next job is a larger, more adversarial dataset that can
 map the real cost/accuracy frontier instead of saturating at the mid tier.
+
+The `api` LLM judge (`qwen38-27b`) also scores a perfect 1.000 and is nearly
+calibrated (ECE 0.029). That both tiers saturate reinforces the caution, and it
+produces a sharp frontier result: the paid judge is **not** Pareto-optimal here,
+because the far cheaper local NLI model matches its quality. On this dataset you
+would never pay for the judge.
 
 ### Are the gaps real?
 
@@ -139,7 +147,8 @@ promises this, and the calibration numbers show it does not hold:
 
 | Detector | AUROC | ECE | ECE 95% CI | MCE | Brier |
 |----------|-------|-----|------------|-----|-------|
-| `nli_entailment` | 1.000 | 0.009 | [0.000, 0.028] | 0.263 | 0.001 |
+| `nli_entailment` | 1.000 | 0.009 | [0.002, 0.019] | 0.263 | 0.001 |
+| `llm_judge` | 1.000 | 0.029 | [0.012, 0.060] | 0.720 | 0.011 |
 | `majority_constant` | 0.500 | 0.000 | [0.000, 0.000] | 0.000 | 0.250 |
 | `tfidf_cosine` | 0.603 | 0.187 | [0.135, 0.344] | 0.928 | 0.265 |
 | `lexical_overlap` | 0.763 | 0.304 | [0.242, 0.391] | 1.000 | 0.281 |
@@ -159,11 +168,11 @@ reading the column you expect:
   only about 14% of answers are actually faithful, not 65%. Reading its raw score
   as a confidence would be far off, so deploying it as a probability would need a
   calibration map (Platt or isotonic) fit on a held-out split.
-- **The NLI model is the exception.** It is both best-ranked (AUROC 1.000) and
-  essentially calibrated (ECE 0.009, Brier 0.001): its entailment probabilities
-  track the true faithful rate, so unlike the free detectors its score can be
-  read as a probability. That is the mid tier buying trustworthy confidence, not
-  just a better ordering.
+- **The heavy tiers are the exception.** Both are best-ranked (AUROC 1.000) and
+  nearly calibrated: NLI at ECE 0.009 (Brier 0.001) and the judge at ECE 0.029
+  (Brier 0.011). Their scores track the true faithful rate, so unlike the free
+  detectors they can be read as probabilities. That is the model/api tiers
+  buying trustworthy confidence, not just a better ordering.
 
 Among the free detectors, `tfidf_cosine` has the lowest point ECE despite the
 worst AUROC, but its CI overlaps the others, so that is a hint rather than a
@@ -189,6 +198,7 @@ on the training folds and scoring on the held-out fold:
 | Detector | Oracle F1 | CV F1 | Optimism | CV precision | CV recall |
 |----------|-----------|-------|----------|--------------|-----------|
 | `nli_entailment` | 1.000 | 1.000 | +0.000 | 1.000 | 1.000 |
+| `llm_judge` | 1.000 | 0.980 | +0.020 | 0.962 | 1.000 |
 | `novel_token` | 0.774 | 0.733 | +0.041 | 0.629 | 0.880 |
 | `lexical_overlap` | 0.762 | 0.721 | +0.041 | 0.611 | 0.880 |
 | `majority_constant` | 0.667 | 0.667 | +0.000 | 0.500 | 1.000 |
@@ -250,7 +260,27 @@ swaps. Both are failures of meaning, not surface overlap.
 
 The whole point of Tether is to ask *how closely a free detector tracks an
 expensive LLM judge*. The judge is the reference detector; agreement with it is
-the headline metric.
+the headline metric. With the judge tier now run (`qwen38-27b`), that question
+has a real answer on this sample:
+
+| Detector vs judge | Agreement | Cohen's kappa | Judge-only catches | Cheap-only flags |
+|-------------------|-----------|---------------|--------------------|------------------|
+| `nli_entailment` | 0.980 | 0.960 | 1 | 0 |
+| `novel_token` | 0.740 | 0.470 | 1 | 12 |
+| `lexical_overlap` | 0.720 | 0.428 | 1 | 13 |
+| `tfidf_cosine` | 0.540 | 0.043 | 0 | 23 |
+| `majority_constant` | 0.520 | 0.000 | 0 | 24 |
+
+The NLI model essentially *is* the judge here (kappa 0.96). The best free
+detectors land at moderate agreement (kappa ~0.43-0.47), and the way they fall
+short is one-sided: the `cheap-only flags` column shows they raise 12-13 false
+alarms the judge rejects, while missing almost nothing the judge catches. In
+other words, the cheap detectors over-flag faithful paraphrases rather than
+letting hallucinations through, which is exactly the surface-overlap failure the
+free tier was shown to have. `tfidf_cosine` and the constant floor agree with the
+judge no better than chance (kappa ≈ 0). This is the benchmark's founding
+question answered: on this data the cheap detectors are a coarse proxy for the
+judge, and the NLI tier is a near-perfect one.
 
 The judge is provider-decoupled — `LLMJudgeDetector` takes any `judge_fn`
 mapping an example to a faithfulness score, so it's trivially mockable and the
@@ -324,6 +354,7 @@ Cost/accuracy frontier (quality = auroc; * = Pareto-optimal)
 detector           cost_tier  cost  auroc  frontier
 -----------------  ---------  ----  -----  --------
 nli_entailment     model      0.30  1.000  *
+llm_judge          api        1.00  1.000
 novel_token        free       0.00  0.779  *
 lexical_overlap    free       0.00  0.763
 tfidf_cosine       free       0.00  0.603
@@ -331,14 +362,14 @@ majority_constant  free       0.00  0.500
 ```
 
 Two detectors are Pareto-optimal: `novel_token` (cheapest useful option) and
-`nli_entailment` (highest quality). Among the free detectors only `novel_token`
-is on the frontier — the rest cost the same but detect less, though its edge over
-`lexical_overlap` is within noise, as the paired test above shows. The NLI tier
-sits at the top of the staircase: one step up in cost buys the jump from 0.78 to
-1.00 AUROC on this sample. Adding the `llm_judge` row (cost tier `api`) would
-extend the ladder further, once it is run with a key. The research payoff is the
-shape of that staircase — *how much AUROC each step up the cost ladder actually
-buys* — and here the mid step buys a lot.
+`nli_entailment` (highest quality for the lowest cost that achieves it). The
+single step up from the free tier to the NLI model buys the jump from 0.78 to
+1.00 AUROC on this sample. The most pointed result is that the **paid `llm_judge`
+is not on the frontier**: it matches NLI's perfect AUROC but costs more, so the
+cheaper local model dominates it. On this dataset you would never pay for the
+judge. The research payoff is the shape of that staircase — *how much AUROC each
+step up the cost ladder actually buys* — and here the free→model step buys
+everything while the model→api step buys nothing.
 
 ```python
 from tether import load_sample, default_detectors, run_benchmark, build_frontier, format_frontier
@@ -413,7 +444,8 @@ data/sample.jsonl    # bundled labeled dataset (50 examples, runs offline), erro
 scripts/run_benchmark.py   # prints leaderboard + breakdown + frontier
 scripts/generate_report.py # regenerates RESULTS.md
 scripts/score_detector.py  # score one detector, cache to JSON (HPC job entry point)
-out/nli.json         # cached NLI (bart-large-mnli) scores from a SOL run, folded into the report
+out/nli.json         # cached NLI (bart-large-mnli) scores from a GPU run, folded into the report
+out/judge.json       # cached LLM-judge (qwen38-27b) scores, folded into the report
 PAPER.md                   # working paper draft
 RESULTS.md                 # generated results, cited by the paper
 COMPUTE.md                 # producing the model/api tiers on a GPU and caching them
@@ -423,20 +455,20 @@ tests/               # 198 unit tests
 ## Roadmap
 
 - **Grow the dataset into a harder, more adversarial set** of hundreds of
-  examples with annotated unsupported spans. The NLI tier scoring a perfect
-  AUROC shows the current 50 examples no longer challenge a semantic model, so
-  the frontier saturates at the mid tier; a harder set is needed to find where
-  NLI fails and to map the real staircase.
-- **Run the `api` judge tier** with a key and cache it alongside `out/nli.json`,
-  so all three tiers are populated.
+  examples with annotated unsupported spans. Both the NLI *and* judge tiers score
+  a perfect AUROC, so the current 50 examples no longer challenge a semantic
+  model and the frontier saturates; a harder set is needed to find where these
+  tiers fail and to map the real staircase.
 - **Wire live measured latency/tokens** from real NLI and judge runs into the cost model
 
 _Done:_ 50-example error-type / support-type annotated dataset with integrity
 validation and a difficulty (lexical-overlap separation) summary; per-category
-recall breakdown; NLI-entailment mid-cost baseline (run on ASU SOL, real cached
-scores in `out/nli.json`, perfect AUROC on the sample), LLM-judge reference
-detector (both provider-decoupled) + agreement analysis (agreement rate, Cohen's
-kappa); cost/accuracy frontier with Pareto marking; reproducible Markdown report
+recall breakdown; NLI-entailment mid-cost baseline (real cached scores in
+`out/nli.json`, perfect AUROC on the sample) and an LLM-judge api tier run over
+an OpenAI-compatible gateway (`out/judge.json`, also perfect, not Pareto because
+NLI matches it cheaper), both provider-decoupled, with a real agreement analysis
+(agreement rate, Cohen's kappa) of the cheap detectors vs the judge;
+cost/accuracy frontier with Pareto marking; reproducible Markdown report
 ([RESULTS.md](RESULTS.md)) and a working paper draft ([PAPER.md](PAPER.md));
 score caching so the heavy tiers run once on HPC and the analysis stays offline
 ([COMPUTE.md](COMPUTE.md)); a cost model that prices the frontier in real dollars

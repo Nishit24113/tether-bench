@@ -130,8 +130,8 @@ def openai_compatible_judge(
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
     temperature: float = 0.0,
-    max_tokens: int = 1024,
-    timeout: float = 60.0,
+    max_tokens: int = 2048,
+    timeout: float = 90.0,
     extra_body: Optional[dict] = None,
     transport: Optional[Callable[[str, dict, dict], dict]] = None,
 ) -> JudgeFn:
@@ -150,7 +150,7 @@ def openai_compatible_judge(
             e.g. `.../v1`). Falls back to `TETHER_JUDGE_BASE_URL`.
         api_key: bearer token. Falls back to `TETHER_JUDGE_API_KEY`.
         temperature: sampling temperature; 0 keeps the verdict deterministic.
-        max_tokens: output cap. Default 1024 leaves room for a reasoning model's
+        max_tokens: output cap. Default 2048 leaves room for a reasoning model's
             think step before the small JSON verdict.
         timeout: per-request timeout in seconds.
         extra_body: optional dict merged into the request payload, for

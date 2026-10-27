@@ -16,6 +16,8 @@ from .frontier import build_frontier
 from .stats import detector_uncertainty
 from .calibration import detector_calibration, calibration_ci
 from .validation import detector_validation
+from .agreement import judge_agreement
+from .metrics import best_threshold
 
 
 def _md_table(headers: List[str], rows: List[List[str]]) -> str:
@@ -92,6 +94,32 @@ def validation_markdown(val: Dict[str, Any]) -> str:
         for name, v in sorted(val.items(), key=lambda kv: kv[1]["cv_f1"], reverse=True)
     ]
     return _md_table(headers, rows)
+
+
+def agreement_markdown(detectors: List[Detector], examples: List[Example], judge: Detector) -> str:
+    """
+    Each non-judge detector's agreement with the judge on the binary
+    hallucination call: raw agreement, Cohen's kappa, and where they diverge.
+    Each cheap detector is thresholded at its own F1-optimal point; the judge at
+    0.5. Rows ordered by kappa (closest-to-judge first).
+    """
+    labels = [e.label for e in examples]
+    judge_scores = judge.score_all(examples)
+    headers = ["Detector vs judge", "Agreement", "Cohen kappa",
+               "Judge-only catches", "Cheap-only flags"]
+    scored = []
+    for d in detectors:
+        if d.name == judge.name:
+            continue
+        s = d.score_all(examples)
+        thr, _ = best_threshold(labels, s)
+        ag = judge_agreement(s, judge_scores, cheap_threshold=thr)
+        scored.append((ag["cohen_kappa"], [
+            d.name, f"{ag['agreement_rate']:.3f}", f"{ag['cohen_kappa']:.3f}",
+            str(ag["judge_only_flags"]), str(ag["cheap_only_flags"]),
+        ]))
+    scored.sort(key=lambda kv: kv[0], reverse=True)
+    return _md_table(headers, [row for _, row in scored])
 
 
 def breakdown_markdown(breakdowns: Dict[str, Any]) -> str:
@@ -215,4 +243,24 @@ def generate_report(
         frontier_markdown(frontier),
         "",
     ]
+
+    # The founding question: how closely do the cheap detectors track the judge?
+    # Only shown when a judge (api tier) is in the run.
+    judge = next((d for d in detectors if getattr(d, "cost", None) == "api"), None)
+    if judge is not None:
+        parts += [
+            "## How well do the cheap detectors agree with the judge?",
+            "",
+            f"Tether's thesis is that a cheap detector is useful insofar as it "
+            f"agrees with the LLM judge ({judge.name}). Each cheap detector's "
+            "hallucination calls (at its F1-optimal threshold) are compared with "
+            "the judge's (at 0.5). Cohen's kappa corrects for chance agreement; "
+            "`judge-only catches` are hallucinations the judge flagged and the "
+            "cheap detector missed, and `cheap-only flags` are answers the cheap "
+            "detector flagged that the judge called faithful.",
+            "",
+            agreement_markdown(detectors, examples, judge),
+            "",
+        ]
+
     return "\n".join(parts)
