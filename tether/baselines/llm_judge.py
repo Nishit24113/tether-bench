@@ -53,17 +53,31 @@ def parse_verdict(text: str) -> float:
     a `hallucinated` verdict maps to 1 - confidence (low = confidently
     unfaithful). This keeps the output on the same "higher = more faithful"
     scale as every other detector, so the harness can threshold and rank it.
+
+    Robust to reasoning-model output: any <think>...</think> preamble is stripped
+    first, and when several JSON objects are present the LAST one carrying a
+    `faithful` key wins (the final answer follows the reasoning).
     """
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
+    cleaned = re.sub(r"<think>.*?</think>", " ", text, flags=re.DOTALL | re.IGNORECASE)
+
+    candidates = re.findall(r"\{[^{}]*\}", cleaned, re.DOTALL)
+    if not candidates:
         raise ValueError(f"No JSON object found in judge response: {text!r}")
 
-    obj = json.loads(match.group(0))
-    if "faithful" not in obj:
-        raise ValueError(f"Judge response missing 'faithful': {obj!r}")
+    verdict = None
+    for chunk in candidates:
+        try:
+            obj = json.loads(chunk)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict) and "faithful" in obj:
+            verdict = obj  # keep scanning; the last valid verdict wins
 
-    faithful = bool(obj["faithful"])
-    confidence = float(obj.get("confidence", 1.0))
+    if verdict is None:
+        raise ValueError(f"Judge response missing 'faithful': {text!r}")
+
+    faithful = bool(verdict["faithful"])
+    confidence = float(verdict.get("confidence", 1.0))
     confidence = max(0.0, min(1.0, confidence))
 
     return confidence if faithful else 1.0 - confidence
@@ -116,8 +130,9 @@ def openai_compatible_judge(
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
     temperature: float = 0.0,
-    max_tokens: int = 256,
+    max_tokens: int = 1024,
     timeout: float = 60.0,
+    extra_body: Optional[dict] = None,
     transport: Optional[Callable[[str, dict, dict], dict]] = None,
 ) -> JudgeFn:
     """
@@ -135,8 +150,11 @@ def openai_compatible_judge(
             e.g. `.../v1`). Falls back to `TETHER_JUDGE_BASE_URL`.
         api_key: bearer token. Falls back to `TETHER_JUDGE_API_KEY`.
         temperature: sampling temperature; 0 keeps the verdict deterministic.
-        max_tokens: output cap; the judge returns a tiny JSON object.
+        max_tokens: output cap. Default 1024 leaves room for a reasoning model's
+            think step before the small JSON verdict.
         timeout: per-request timeout in seconds.
+        extra_body: optional dict merged into the request payload, for
+            gateway-specific knobs (e.g. disabling a reasoning model's thinking).
         transport: optional `(url, payload, headers) -> response_dict` hook. The
             default uses the stdlib (`urllib`), so there is no extra dependency;
             tests inject a fake transport to run offline.
@@ -178,6 +196,8 @@ def openai_compatible_judge(
                 {"role": "user", "content": _build_prompt(example)},
             ],
         }
+        if extra_body:
+            payload.update(extra_body)
         headers = {
             "Authorization": f"Bearer {resolved_key}",
             "Content-Type": "application/json",

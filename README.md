@@ -377,7 +377,7 @@ exactly the kind of correction real cost numbers make to the frontier.
 
 ```bash
 pip install -e ".[dev]"
-pytest                          # 196 tests, all stdlib
+pytest                          # 198 tests, all stdlib
 python scripts/run_benchmark.py # prints the leaderboard above
 ```
 
@@ -417,7 +417,7 @@ out/nli.json         # cached NLI (bart-large-mnli) scores from a SOL run, folde
 PAPER.md                   # working paper draft
 RESULTS.md                 # generated results, cited by the paper
 COMPUTE.md                 # producing the model/api tiers on a GPU and caching them
-tests/               # 196 unit tests
+tests/               # 198 unit tests
 ```
 
 ## Roadmap

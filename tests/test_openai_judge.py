@@ -83,6 +83,30 @@ def test_missing_key_raises(monkeypatch):
         judge(EX)
 
 
+def test_parses_reasoning_model_output():
+    # qwen3-style: a <think> block (with its own braces) then the real verdict
+    reply = (
+        "<think>The context says X but the answer says Y, {not matching}</think>\n"
+        '{"faithful": false, "confidence": 0.75}'
+    )
+    judge = openai_compatible_judge(
+        "qwen3-30b", base_url="https://gw/v1", api_key="k",
+        transport=_fake_transport(reply),
+    )
+    assert judge(EX) == pytest.approx(0.25)
+
+
+def test_extra_body_is_merged_into_payload():
+    captured = {}
+    judge = openai_compatible_judge(
+        "qwen3-30b", base_url="https://gw/v1", api_key="k",
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+        transport=_fake_transport('{"faithful": true, "confidence": 1.0}', captured),
+    )
+    judge(EX)
+    assert captured["payload"]["chat_template_kwargs"] == {"enable_thinking": False}
+
+
 def test_detector_scores_all_examples():
     judge = openai_compatible_judge(
         "m", base_url="https://gw/v1", api_key="k",
