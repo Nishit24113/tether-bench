@@ -32,7 +32,12 @@ significantly outperform TF-IDF and the floor. A calibration analysis adds a
 caution: the detectors that rank best are the worst calibrated, so their raw
 scores order answers well but cannot be read as probabilities. The mean lexical overlap separates faithful from hallucinated answers
 by just 0.16, so surface overlap is not enough, which is where a semantic model
-or an LLM judge earns its cost.
+or an LLM judge earns its cost. A local NLI model at the mid-cost tier, run once
+on a GPU cluster and cached for offline reproduction, bears this out: it
+separates the classes perfectly on the sample (AUROC 1.000) and is well
+calibrated, which both validates the cost tier and shows the fifty-example set is
+no longer hard enough to challenge a semantic model, motivating a larger and more
+adversarial dataset as the central next step.
 
 ## 1. Introduction
 
@@ -95,7 +100,11 @@ Tether groups detectors into three cost tiers:
 
 The NLI and LLM detectors are provider-decoupled. Each takes an injected scoring
 function, so the benchmark runs offline with deterministic fakes and the heavy
-dependencies stay optional.
+dependencies stay optional. For the results below the NLI tier is run for real:
+`facebook/bart-large-mnli` is scored once on ASU's Sol cluster and its
+per-example scores are cached to JSON and committed, so the model-tier row is
+reproducible with no model download. The LLM judge tier is wired but not run
+here, as it requires a paid key.
 
 ## 5. Metrics
 
@@ -139,12 +148,18 @@ Leaderboard on the bundled sample (ranked by AUROC, with stratified bootstrap
 
 | Detector | Cost | AUROC | AUROC 95% CI | F1 | Precision | Recall | Accuracy |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| nli_entailment | model | 1.000 | [1.000, 1.000] | 1.000 | 1.000 | 1.000 | 1.000 |
 | novel_token | free | 0.779 | [0.635, 0.902] | 0.774 | 0.649 | 0.960 | 0.720 |
 | lexical_overlap | free | 0.763 | [0.614, 0.890] | 0.762 | 0.632 | 0.960 | 0.700 |
 | tfidf_cosine | free | 0.603 | [0.435, 0.758] | 0.676 | 0.510 | 1.000 | 0.520 |
 | majority_constant | free | 0.500 | [0.500, 0.500] | 0.667 | 0.500 | 1.000 | 0.500 |
 
-Paired bootstrap of the best detector against each of the others:
+The NLI numbers come from a cached run of `facebook/bart-large-mnli` on ASU's
+Sol cluster; the per-example scores are committed so the row is reproducible
+offline. The NLI detector beats every free detector by a large and significant
+margin (paired bootstrap, all p < 0.001), so the interesting paired comparisons
+are within the free tier. Taking novel_token, the best free detector, as the
+reference:
 
 | novel_token vs | AUROC diff | 95% CI | p-value | Significant | Examples scored differently |
 | --- | --- | --- | --- | --- | --- |
@@ -156,6 +171,7 @@ Calibration of the faithfulness scores (ECE/MCE/Brier, lower is better):
 
 | Detector | AUROC | ECE | ECE 95% CI | MCE | Brier |
 | --- | --- | --- | --- | --- | --- |
+| nli_entailment | 1.000 | 0.009 | [0.000, 0.028] | 0.263 | 0.001 |
 | majority_constant | 0.500 | 0.000 | [0.000, 0.000] | 0.000 | 0.250 |
 | tfidf_cosine | 0.603 | 0.187 | [0.135, 0.344] | 0.928 | 0.265 |
 | lexical_overlap | 0.763 | 0.304 | [0.242, 0.391] | 1.000 | 0.281 |
@@ -166,6 +182,7 @@ threshold hides:
 
 | Detector | Oracle F1 | CV F1 | Optimism | CV precision | CV recall |
 | --- | --- | --- | --- | --- | --- |
+| nli_entailment | 1.000 | 1.000 | +0.000 | 1.000 | 1.000 |
 | novel_token | 0.774 | 0.733 | +0.041 | 0.629 | 0.880 |
 | lexical_overlap | 0.762 | 0.721 | +0.041 | 0.611 | 0.880 |
 | majority_constant | 0.667 | 0.667 | +0.000 | 0.500 | 1.000 |
@@ -186,7 +203,7 @@ AUROC is 0.50.)
 
 ## 7. Analysis
 
-Five findings stand out.
+Six findings stand out.
 
 First, on a hard dataset the free detectors are not enough. The best, `novel_token`,
 reaches only 0.78 AUROC, and `tfidf_cosine` falls to 0.60, barely above the 0.50
@@ -250,13 +267,29 @@ seed, so the honest operating-point number should be read as a range, not a
 point. This is the operating-point analogue of the wide AUROC intervals: the
 small dataset limits what any single number can claim.
 
-The cost/accuracy frontier ties this together. Among the free detectors only
-`novel_token` is Pareto-optimal, since the others cost the same and detect less,
-although its edge over `lexical_overlap` is within noise.
-Adding the NLI model populates the mid-cost tier, and the LLM judge sits at the
-top of the frontier: most expensive, highest quality. The research payoff is the
-shape of that staircase, which quantifies how much AUROC each step up the cost
-ladder actually buys.
+Sixth, the semantic mid tier earns its cost, and emphatically so. The NLI model,
+which scores entailment rather than word overlap, separates the two classes
+perfectly on this sample: AUROC, F1, and accuracy are all 1.000, it beats every
+free detector with p < 0.001, and unlike the free detectors it is also
+well calibrated (ECE 0.009, Brier 0.001), so its entailment probability can be
+read as a confidence. This is the benchmark's thesis realized: the
+vocabulary-reusing errors that defeat surface overlap are exactly what a semantic
+model catches. The result carries an immediate caveat, though. A perfect score on
+fifty hand-written examples does not mean NLI solves faithfulness detection; it
+means this dataset is no longer hard enough to find where an off-the-shelf NLI
+model fails. The benchmark has saturated at the mid tier, which turns the headline
+result into a mandate for a larger and more adversarial dataset.
+
+The cost/accuracy frontier ties this together. Two detectors are Pareto-optimal:
+`novel_token`, the cheapest useful option, and `nli_entailment`, the highest
+quality. Among the free detectors only `novel_token` is on the frontier, since
+the others cost the same and detect less, although its edge over `lexical_overlap`
+is within noise. The single step up from the free tier to the NLI model buys the
+jump from 0.78 to 1.00 AUROC on this sample, and an LLM judge, once run with a
+key, would extend the ladder further. The research payoff is the shape of that
+staircase, which quantifies how much AUROC each step up the cost ladder actually
+buys; here the mid step buys a great deal, precisely because the dataset is built
+around the errors overlap cannot see.
 
 ## 8. Limitations
 
@@ -264,27 +297,37 @@ The dataset is small and hand-written, which keeps it reproducible but limits
 statistical power and domain coverage. The bootstrap makes the cost in power
 explicit: the 95% AUROC intervals span 0.27 to 0.32, too wide to separate
 detectors a few points apart, and the cross-validated F1 swings by several
-points with the fold seed. The error types are a coarse taxonomy.
-The live NLI and LLM paths are not exercised in continuous integration, since
-they require a model download or API access, so the committed results cover the
-free tier. Absolute cost is represented by relative per-tier scores rather than
-measured dollars.
+points with the fold seed. The error types are a coarse taxonomy. The clearest
+limitation is now the dataset's difficulty ceiling: the NLI model reaches a
+perfect AUROC, so the sample no longer discriminates among capable semantic
+models and the measured frontier saturates at the mid tier. The NLI scores are
+produced on a cluster and cached rather than recomputed in continuous
+integration, since the model requires a GPU and a download; the committed JSON
+makes that row reproducible offline, but the live path is not exercised in CI.
+The LLM judge tier is not run here because it needs a paid key. Absolute cost is
+represented by relative per-tier scores rather than measured dollars.
 
 ## 9. Future Work
 
-Natural next steps are a larger and harder dataset with annotated unsupported
-spans, large enough to resolve the gaps the current intervals leave open,
-measured dollar and latency costs for the model and API tiers, more
-baselines in the mid-cost tier (embedding similarity, smaller NLI models), and a
-reported agreement study between the cheap detectors and the judge across the
-full dataset.
+The most pressing next step is a larger and harder dataset with annotated
+unsupported spans, built to be adversarial for semantic models and not only for
+surface overlap, so that it both resolves the gaps the current intervals leave
+open and pushes the NLI tier off its perfect score to reveal where it fails.
+Beyond that: measured dollar and latency costs for the model and API tiers, more
+baselines in the mid-cost tier (embedding similarity, smaller NLI models),
+running the LLM judge and reporting an agreement study between the cheap
+detectors and the judge across the full dataset, and recovering the free-tier
+calibration with a fitted calibration map so the cheap scores become usable
+probabilities.
 
 ## 10. Reproducibility
 
 The free-tier results, metrics, frontier, bootstrap statistics, and calibration
 analysis are pure-stdlib and deterministic. The bootstrap is seeded, so every
-interval and p-value is identical across runs. Running
-`python scripts/generate_report.py` regenerates `RESULTS.md`, and the test suite
-(`pytest`) covers the metrics, baselines, breakdown, frontier, agreement,
-bootstrap statistics, calibration, cross-validated operating points, and report
-generation offline.
+interval and p-value is identical across runs. The model-tier (NLI) scores are
+computed once on a cluster and cached to `out/nli.json`, which is committed, so
+`python scripts/generate_report.py` folds them into `RESULTS.md` with no model
+download and the model-tier numbers are reproducible offline like the rest. The
+test suite (`pytest`) covers the metrics, baselines, breakdown, frontier,
+agreement, bootstrap statistics, calibration, cross-validated operating points,
+and report generation offline.
