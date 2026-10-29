@@ -25,24 +25,20 @@ calibration analysis of whether the scores can be read as probabilities,
 cross-validated operating points that measure how optimistic the reported F1 is,
 and post-hoc calibration maps that recover usable probabilities from the cheap
 scores.
-On a deliberately hard sample, where hallucinations reuse most of the context
-vocabulary and faithful answers paraphrase with few shared tokens, the free
-detectors fall well short: the best reaches only 0.78 AUROC (95% CI 0.64 to
-0.90) and a TF-IDF baseline drops to 0.60, barely above the 0.50 floor. A paired
-bootstrap shows the two best free detectors are statistically tied, while both
-significantly outperform TF-IDF and the floor. A calibration analysis adds a
-caution: the detectors that rank best are the worst calibrated, so their raw
-scores order answers well but cannot be read as probabilities. The mean lexical overlap separates faithful from hallucinated answers
-by just 0.16, so surface overlap is not enough, which is where a semantic model
-or an LLM judge earns its cost. Both higher tiers bear this out: a local NLI
-model (run on a GPU) and an LLM judge (a Qwen3 model queried over an
-OpenAI-compatible gateway), each cached for offline reproduction, separate the
-classes perfectly on the sample (AUROC 1.000) and are well calibrated. The NLI
-model agrees with the judge on 98% of answers (Cohen's kappa 0.96), and because
-it matches the judge's quality at far lower cost the paid judge is not
-Pareto-optimal. That both tiers saturate shows the fifty-example set is no longer
-hard enough to challenge a semantic model, motivating a larger and more
-adversarial dataset as the central next step.
+On a deliberately hard sample of 100 examples, where the mean lexical overlap of
+faithful and hallucinated answers differs by just 0.009, every free detector
+collapses to near chance: the best reaches only 0.57 AUROC and a TF-IDF baseline
+falls to 0.45, below the 0.50 floor, and no free detector's 95% interval excludes
+0.5. Both semantic tiers, by contrast, a local NLI model (run on a GPU) and an
+LLM judge (a Qwen3 model queried over an OpenAI-compatible gateway, each cached
+for offline reproduction), still separate the classes perfectly (AUROC 1.000) and
+are well calibrated, beating every free detector by 0.43 to 0.55 AUROC at
+p < 0.001. The NLI model reproduces the judge (Cohen's kappa 0.98) while the free
+detectors fall to near-chance agreement, and because the local model matches the
+judge's quality at far lower cost the paid judge is not Pareto-optimal. The hard
+set thus opens a wide, significant gap between the surface and semantic tiers;
+that both semantic tiers remain perfect shows the next challenge is a set hard
+enough to probe where they fail.
 
 ## 1. Introduction
 
@@ -72,23 +68,30 @@ is what we want to catch.
 
 ## 3. Dataset
 
-The bundled dataset is 50 hand-written examples, balanced 25 faithful and 25
-hallucinated, across general-knowledge domains. It is built to be hard: many
-hallucinations swap a single entity or number while reusing the rest of the
-context's wording, and many faithful answers paraphrase the context with few
-shared tokens. The mean lexical overlap is 0.81 for faithful answers and 0.65 for
-hallucinated ones, a gap of only 0.16. Every hallucinated example is annotated
-with an error type, and every faithful example with a support type:
+The bundled dataset is 100 hand-written examples, balanced 50 faithful and 50
+hallucinated, across general-knowledge domains. It is built to be hard for
+surface overlap and to probe reasoning: hallucinations swap an entity, number, or
+quantifier while reusing the context's wording, or require a reasoning step
+(numeric, multi-hop, scope, temporal) to detect, and faithful answers paraphrase
+the context or must be inferred from it. The mean lexical overlap is 0.68 for
+faithful answers and 0.67 for hallucinated ones, a gap of only 0.009, so surface
+overlap carries almost no signal. Every hallucinated example is annotated with an
+error type, and every faithful example with a support type:
 
-- **numeric**: a wrong number, date, or count.
+- **numeric**: a wrong number, or a wrong result of numeric reasoning (an
+  aggregation, rate, or scaling).
 - **entity_swap**: a wrong entity that reuses the context vocabulary.
 - **unsupported_addition**: an extra claim the context does not make.
-- **contradiction**: a statement that directly contradicts the context.
-- **direct** / **paraphrase**: faithful answers that copy or restate the context.
+- **contradiction**: a statement that contradicts the context, often by negation
+  or a changed scope word (*only*, *all*).
+- **multi_hop**: a wrong conclusion from combining two context facts.
+- **temporal**: a wrong ordering of events the context dates or sequences.
+- **direct** / **paraphrase** / **multi_hop** / **inference**: faithful answers
+  that copy, restate, combine, or are entailed by the context.
 
-The dataset is intentionally small and curated so it ships in the repository and
-the benchmark runs with no download. The error-type annotations are what let the
-benchmark report where detectors fail rather than only how often.
+The dataset is curated so it ships in the repository and the benchmark runs with
+no download. The error-type annotations are what let the benchmark report where
+detectors fail rather than only how often.
 
 ## 4. Detectors
 
@@ -131,7 +134,7 @@ kappa, which corrects for chance agreement.
 
 Because the dataset is small, every AUROC is reported with a 95% confidence
 interval from a percentile bootstrap (2000 resamples, fixed seed). Resampling is
-stratified by class, so each resample keeps 25 faithful and 25 hallucinated
+stratified by class, so each resample keeps 50 faithful and 50 hallucinated
 examples and AUROC is always defined. To decide whether a leaderboard gap is
 real, we run a paired bootstrap: both detectors are scored on the same
 resamples, the interval is placed on their AUROC difference, and the two-sided
@@ -162,40 +165,41 @@ Leaderboard on the bundled sample (ranked by AUROC, with stratified bootstrap
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | nli_entailment | model | 1.000 | [1.000, 1.000] | 1.000 | 1.000 | 1.000 | 1.000 |
 | llm_judge | api | 1.000 | [1.000, 1.000] | 1.000 | 1.000 | 1.000 | 1.000 |
-| novel_token | free | 0.779 | [0.635, 0.902] | 0.774 | 0.649 | 0.960 | 0.720 |
-| lexical_overlap | free | 0.763 | [0.614, 0.890] | 0.762 | 0.632 | 0.960 | 0.700 |
-| tfidf_cosine | free | 0.603 | [0.435, 0.758] | 0.676 | 0.510 | 1.000 | 0.520 |
+| lexical_overlap | free | 0.572 | [0.460, 0.688] | 0.706 | 0.558 | 0.960 | 0.600 |
+| novel_token | free | 0.562 | [0.443, 0.673] | 0.682 | 0.557 | 0.880 | 0.590 |
 | majority_constant | free | 0.500 | [0.500, 0.500] | 0.667 | 0.500 | 1.000 | 0.500 |
+| tfidf_cosine | free | 0.447 | [0.340, 0.566] | 0.676 | 0.510 | 1.000 | 0.520 |
 
 The NLI numbers come from a cached run of `facebook/bart-large-mnli` on a GPU;
 the judge numbers from a cached run of a Qwen3 model (`qwen38-27b`) served over
 an OpenAI-compatible gateway. Both detectors' per-example scores are committed so
-their rows are reproducible offline. Each beats every free detector by a large
-and significant margin (paired bootstrap, all p < 0.001), so the interesting
-paired comparisons are within the free tier. Taking novel_token, the best free
-detector, as the reference:
+their rows are reproducible offline. No free detector's interval excludes 0.5, so
+none significantly beats the majority baseline. Both semantic tiers beat every
+free detector decisively; the paired bootstrap of the best detector
+(`nli_entailment`) against each free one:
 
-| novel_token vs | AUROC diff | 95% CI | p-value | Significant | Examples scored differently |
-| --- | --- | --- | --- | --- | --- |
-| lexical_overlap | +0.016 | [-0.013, +0.070] | 0.776 | no | 3/50 |
-| tfidf_cosine | +0.176 | [+0.040, +0.321] | 0.007 | yes | 49/50 |
-| majority_constant | +0.279 | [+0.135, +0.402] | < 0.001 | yes | 48/50 |
+| nli_entailment vs | AUROC diff | 95% CI | p-value | Examples scored differently |
+| --- | --- | --- | --- | --- |
+| lexical_overlap | +0.428 | [+0.312, +0.540] | < 0.001 | 100/100 |
+| novel_token | +0.438 | [+0.327, +0.557] | < 0.001 | 100/100 |
+| tfidf_cosine | +0.553 | [+0.434, +0.660] | < 0.001 | 100/100 |
+| majority_constant | +0.500 | [+0.500, +0.500] | < 0.001 | 100/100 |
 
 A logistic combiner stacked on the free detectors and evaluated out-of-fold
-(5-fold, seed 0) does not beat the best single free detector: it reaches AUROC
-0.726 (95% CI [0.566, 0.877]) versus novel_token's 0.779, a difference of -0.053
-(95% CI [-0.170, +0.050], p = 0.345, not significant).
+(5-fold, seed 0) does not clear the free-tier ceiling: it reaches AUROC 0.647
+(95% CI [0.540, 0.756]) versus lexical_overlap's 0.572, a difference of +0.074
+(95% CI [-0.066, +0.231], p = 0.333, not significant).
 
 Calibration of the faithfulness scores (ECE/MCE/Brier, lower is better):
 
 | Detector | AUROC | ECE | ECE 95% CI | MCE | Brier |
 | --- | --- | --- | --- | --- | --- |
-| nli_entailment | 1.000 | 0.009 | [0.002, 0.019] | 0.263 | 0.001 |
-| llm_judge | 1.000 | 0.029 | [0.012, 0.060] | 0.720 | 0.011 |
+| nli_entailment | 1.000 | 0.029 | [0.016, 0.044] | 0.370 | 0.006 |
+| llm_judge | 1.000 | 0.024 | [0.014, 0.042] | 0.720 | 0.006 |
 | majority_constant | 0.500 | 0.000 | [0.000, 0.000] | 0.000 | 0.250 |
-| tfidf_cosine | 0.603 | 0.187 | [0.135, 0.344] | 0.928 | 0.265 |
-| lexical_overlap | 0.763 | 0.304 | [0.242, 0.391] | 1.000 | 0.281 |
-| novel_token | 0.779 | 0.321 | [0.258, 0.399] | 1.000 | 0.288 |
+| tfidf_cosine | 0.447 | 0.211 | [0.157, 0.320] | 0.919 | 0.319 |
+| lexical_overlap | 0.572 | 0.321 | [0.262, 0.404] | 0.972 | 0.333 |
+| novel_token | 0.562 | 0.378 | [0.314, 0.453] | 0.972 | 0.362 |
 
 Raw vs post-calibration ECE/Brier, with the calibration map fit out-of-fold
 (5-fold, seed 0) by isotonic regression and by Platt scaling:
@@ -203,11 +207,11 @@ Raw vs post-calibration ECE/Brier, with the calibration map fit out-of-fold
 | Detector | Raw ECE | Isotonic ECE | Platt ECE | Raw Brier | Isotonic Brier |
 | --- | --- | --- | --- | --- | --- |
 | majority_constant | 0.000 | 0.000 | 0.000 | 0.250 | 0.250 |
-| lexical_overlap | 0.304 | 0.190 | 0.169 | 0.281 | 0.223 |
-| novel_token | 0.321 | 0.199 | 0.179 | 0.288 | 0.204 |
-| tfidf_cosine | 0.187 | 0.174 | 0.150 | 0.265 | 0.259 |
-| nli_entailment | 0.009 | 0.005 | 0.000 | 0.001 | 0.001 |
-| llm_judge | 0.029 | 0.017 | 0.020 | 0.011 | 0.010 |
+| lexical_overlap | 0.321 | 0.118 | 0.090 | 0.333 | 0.242 |
+| novel_token | 0.378 | 0.117 | 0.092 | 0.362 | 0.262 |
+| tfidf_cosine | 0.211 | 0.076 | 0.008 | 0.319 | 0.256 |
+| nli_entailment | 0.029 | 0.007 | 0.000 | 0.006 | 0.001 |
+| llm_judge | 0.024 | 0.007 | 0.010 | 0.006 | 0.004 |
 
 Oracle vs 5-fold cross-validated F1 (seed 0), with the optimism the oracle
 threshold hides:
@@ -215,156 +219,116 @@ threshold hides:
 | Detector | Oracle F1 | CV F1 | Optimism | CV precision | CV recall |
 | --- | --- | --- | --- | --- | --- |
 | nli_entailment | 1.000 | 1.000 | +0.000 | 1.000 | 1.000 |
-| llm_judge | 1.000 | 0.980 | +0.020 | 0.962 | 1.000 |
-| novel_token | 0.774 | 0.733 | +0.041 | 0.629 | 0.880 |
-| lexical_overlap | 0.762 | 0.721 | +0.041 | 0.611 | 0.880 |
+| llm_judge | 1.000 | 0.990 | +0.010 | 0.980 | 1.000 |
+| lexical_overlap | 0.706 | 0.696 | +0.010 | 0.553 | 0.940 |
 | majority_constant | 0.667 | 0.667 | +0.000 | 0.500 | 1.000 |
-| tfidf_cosine | 0.676 | 0.629 | +0.047 | 0.489 | 0.880 |
+| tfidf_cosine | 0.676 | 0.667 | +0.009 | 0.505 | 0.980 |
+| novel_token | 0.682 | 0.638 | +0.044 | 0.500 | 0.880 |
 
 Agreement of each detector with the judge on the binary hallucination call
 (cheap detectors at their F1-optimal threshold, judge at 0.5), ordered by kappa:
 
 | Detector vs judge | Agreement | Cohen's kappa | Judge-only catches | Cheap-only flags |
 | --- | --- | --- | --- | --- |
-| nli_entailment | 0.980 | 0.960 | 1 | 0 |
-| novel_token | 0.740 | 0.470 | 1 | 12 |
-| lexical_overlap | 0.720 | 0.428 | 1 | 13 |
-| tfidf_cosine | 0.540 | 0.043 | 0 | 23 |
-| majority_constant | 0.520 | 0.000 | 0 | 24 |
+| nli_entailment | 0.990 | 0.980 | 1 | 0 |
+| lexical_overlap | 0.610 | 0.209 | 2 | 37 |
+| novel_token | 0.600 | 0.191 | 6 | 34 |
+| tfidf_cosine | 0.530 | 0.042 | 0 | 47 |
+| majority_constant | 0.510 | 0.000 | 0 | 49 |
 
 Detection recall by error type (at each detector's F1-optimal threshold):
 
-| Error type | lexical_overlap | novel_token | tfidf_cosine |
-| --- | --- | --- | --- |
-| contradiction | 1.00 | 1.00 | 1.00 |
-| entity_swap | 0.86 | 0.86 | 1.00 |
-| numeric | 1.00 | 1.00 | 1.00 |
-| unsupported_addition | 1.00 | 1.00 | 1.00 |
+| Error type | lexical_overlap | novel_token | tfidf_cosine | nli_entailment | llm_judge |
+| --- | --- | --- | --- | --- | --- |
+| contradiction | 0.89 | 0.89 | 1.00 | 1.00 | 1.00 |
+| entity_swap | 0.92 | 0.92 | 1.00 | 1.00 | 1.00 |
+| multi_hop | 1.00 | 0.75 | 1.00 | 1.00 | 1.00 |
+| numeric | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| temporal | 1.00 | 0.00 | 1.00 | 1.00 | 1.00 |
+| unsupported_addition | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
 
-(`majority_constant` is omitted from the breakdown discussion because it flags
-every answer as hallucinated, so its per-type recall is trivially 1.00 while its
-AUROC is 0.50.)
+(The free detectors' high per-type recalls are an artifact of a low threshold
+that flags almost everything, as the collapsed precision in the leaderboard
+shows; AUROC is the honest view. `majority_constant` is omitted from the table
+for the same reason.)
 
 ## 7. Analysis
 
-Six findings stand out.
+Five findings stand out.
 
-First, on a hard dataset the free detectors are not enough. The best, `novel_token`,
-reaches only 0.78 AUROC, and `tfidf_cosine` falls to 0.60, barely above the 0.50
-floor. Because faithful and hallucinated answers overlap the context by similar
-amounts (0.81 versus 0.65, a 0.16 gap), surface token signals no longer separate
-the classes. The high per-type recalls in the breakdown are achieved only by
-pushing the threshold down and flagging almost everything, which collapses
-precision to 0.51-0.65; AUROC, which is threshold-free, is the honest measure and
-it is where the free detectors visibly degrade.
+First, on a hard dataset the free detectors collapse to chance. The best,
+`lexical_overlap`, reaches only 0.572 AUROC, `novel_token` 0.562, and
+`tfidf_cosine` 0.447, below the 0.50 floor. Faithful and hallucinated answers now
+overlap the context by almost the same amount (0.68 versus 0.67, a 0.009 gap), so
+surface token signals carry essentially no information. Crucially, every free
+detector's 95% AUROC interval includes 0.5, so none significantly beats the
+majority baseline. The free detectors' healthy-looking F1 (around 0.68 to 0.71)
+is a threshold artifact: at a low threshold they flag almost everything, so
+recall stays high and precision collapses to about 0.50 to 0.55. AUROC, which is
+threshold-free, is the honest measure, and there the free tier is indistinguishable
+from chance.
 
-Second, the hardest errors are the ones that reuse the context's words.
-`entity_swap` has the lowest recall for the token-overlap detectors, since
-swapping a single entity leaves most tokens shared. These vocabulary-preserving
-errors, together with the overall AUROC drop, are exactly the cases a semantic
-model (NLI) or an LLM judge should catch, which is the argument for paying for a
-higher tier.
+Second, the failures are failures of meaning, which the per-type view exposes.
+`novel_token` misses every `temporal` hallucination (recall 0.00) and a quarter
+of the `multi_hop` ones, because an answer assembled from words already in the
+context looks grounded to a token-overlap detector even when its logic or
+ordering is wrong. The free detectors do not fail by letting subtle
+hallucinations through so much as by firing on everything, including faithful
+paraphrases and inferences. These are precisely the cases a semantic model is
+built to handle.
 
-Per-example error analysis makes the failure modes concrete. At its F1-optimal
-threshold the lexical detector's false positives are dominated by paraphrases: it
-flags faithful answers such as "They teach the body's defenses to identify and
-combat particular germs" because they restate the context with few shared tokens.
-Its false negatives are the vocabulary-reusing swaps, for example answering that
-"the capital of Australia is Sydney" from a context that names Canberra. Both
-failure modes are about meaning rather than surface words, which is precisely what
-the higher tiers are meant to add.
+Third, ranking quality and calibration are different axes, and the free detectors
+lose on both. `majority_constant` has ECE 0.000, the best in the table, only
+because a constant 0.5 matches the base rate while carrying no signal. The free
+detectors that do vary are badly miscalibrated and worse on the hard set:
+`novel_token` reaches ECE 0.378. The miscalibration is a property of the raw
+scores and is largely fixable, an out-of-fold calibration map cuts the free
+detectors' ECE by roughly two thirds (Platt takes `tfidf_cosine` from 0.211 to
+0.008, and both lexical detectors from about 0.33 and 0.38 down to about 0.09 to
+0.12), but a well-calibrated free score is still a near-chance one: calibration
+makes the number honest, not useful. The semantic tiers win both axes, ranking
+perfectly and staying well calibrated (ECE 0.024 to 0.029).
 
-Third, the ranking at the top of the free tier cannot be resolved at this sample
-size. `novel_token` leads `lexical_overlap` by 0.016 AUROC, but the paired 95%
-interval on that gap is [-0.013, +0.070] and p = 0.776. The two detectors give
-identical scores on 47 of the 50 examples, because they differ only when an
-answer reuses a question word that the context lacks, so the entire gap rests on
-three answers. In contrast, `novel_token` beats `tfidf_cosine` by 0.176
-(p = 0.007) and the constant floor by 0.279 (p < 0.001). The single-detector
-intervals are wide too, 0.27 to 0.32 AUROC for each non-constant detector, so a
-claim that one cheap detector beats another by a few points needs a larger
-dataset than this one. The redundancy also caps what combination can buy: a
-logistic stack of the free detectors, evaluated out-of-fold, does not beat the
-best single one (0.726 versus 0.779, p = 0.345), so the surface signals carry
-essentially one shared axis of information rather than complementary ones, and
-blending them does not reach the semantic tier.
+Fourth, the reported F1 is only mildly optimistic at this sample size, and the
+free signals do not combine. Cross-validation lowers F1 by under 0.01 for most
+detectors and 0.044 for `novel_token`, so the oracle threshold is not badly
+overfit, though the free detectors' operating-point F1 flatters them for the
+threshold reason above. A logistic stack of the free detectors, evaluated
+out-of-fold, does not clear the free-tier ceiling (0.647 versus 0.572,
+p = 0.333): the surface signals are redundant, one shared axis of information
+rather than complementary ones, so blending them cannot reach the semantic tier.
+Doubling the dataset from 50 to 100 examples also roughly halved the optimism
+gaps and narrowed every confidence interval, a direct gain in statistical power.
 
-Fourth, ranking quality and calibration are different axes, and neither implies
-the other here. `majority_constant` has an ECE of 0.000, the best in the table,
-because a constant 0.5 on a balanced set matches the base rate exactly, yet its
-AUROC is 0.5 and it carries no signal. The detectors that do rank well are the
-worst calibrated: `novel_token` has an ECE of 0.321, and in its 0.6 to 0.7 score
-band only about 14% of answers are actually faithful rather than the roughly 65%
-the score implies. The scores are therefore usable as an ordering but not as
-probabilities; a deployment that thresholds on a raw score and treats it as a
-confidence would be badly miscalibrated and would first need a calibration map
-(for example Platt scaling or isotonic regression) fit on a held-out split.
-`tfidf_cosine` has the lowest point ECE among the signal-carrying detectors
-despite the worst AUROC, but its interval overlaps the others, so it is a hint
-rather than a result. The miscalibration is a property of the raw scores and is
-partly fixable: an out-of-fold calibration map (isotonic or Platt) roughly halves
-the free detectors' ECE, taking `lexical_overlap` from 0.304 to about 0.17 and
-`novel_token` from 0.321 to about 0.18, and lowers their Brier score, while
-leaving the already-calibrated detectors untouched. The scores can therefore be
-turned into usable probabilities, though a residual ECE near 0.15 to 0.20 remains
-because fitting a reliable map out-of-fold on fifty examples only goes so far.
-
-Fifth, the reported F1 is mildly optimistic. Because its threshold is tuned on
-the same data it is scored on, the leaderboard F1 overstates the cross-validated
-F1 by about 0.04 for the signal-carrying detectors (`novel_token` 0.774 to
-0.733, `lexical_overlap` 0.762 to 0.721, `tfidf_cosine` 0.676 to 0.629).
-`majority_constant` shows no gap because it flags every answer at any threshold,
-so there is nothing to overfit. The gap is small here because the F1-optimal
-threshold is stable across folds, but at this sample size the cross-validated
-estimate is itself noisy, moving between roughly 0.04 and 0.09 with the fold
-seed, so the honest operating-point number should be read as a range, not a
-point. This is the operating-point analogue of the wide AUROC intervals: the
-small dataset limits what any single number can claim.
-
-Sixth, the semantic tiers earn their cost, and emphatically so. Both the NLI
-model, which scores entailment rather than word overlap, and the LLM judge
-separate the two classes perfectly on this sample: AUROC, F1, and accuracy all
-1.000, each beating every free detector with p < 0.001. Unlike the free
-detectors they are also well calibrated (NLI ECE 0.009, judge ECE 0.029), so
-their scores can be read as confidences. This is the benchmark's thesis
-realized: the vocabulary-reusing errors that defeat surface overlap are exactly
-what a semantic model or a judge catches. The agreement analysis sharpens the
-"how closely does a cheap detector track the judge" question the benchmark is
-built around. The NLI model agrees with the judge on 98% of answers (Cohen's
-kappa 0.96), effectively reproducing it. The best free detectors reach only
-moderate agreement (kappa 0.47 and 0.43), and their shortfall is one-sided: they
-raise 12 to 13 false alarms the judge rejects while missing almost nothing the
-judge catches, so the cheap detectors over-flag faithful paraphrases rather than
-letting hallucinations through. TF-IDF and the constant floor agree with the
-judge no better than chance. The result carries an immediate caveat, though: a
-perfect score from both heavy tiers on fifty hand-written examples does not mean
-the task is solved; it means this dataset is no longer hard enough to find where
-an off-the-shelf semantic model or judge fails. The benchmark has saturated
-above the free tier, which turns the headline result into a mandate for a larger
-and more adversarial dataset.
-
-The cost/accuracy frontier ties this together, and delivers the study's sharpest
-single result. Two detectors are Pareto-optimal: `novel_token`, the cheapest
-useful option, and `nli_entailment`, which reaches the top quality at the lowest
-cost that attains it. The single step up from the free tier to the NLI model
-buys the jump from 0.78 to 1.00 AUROC. The paid `llm_judge` is pointedly *not*
-on the frontier: it matches the NLI model's perfect quality at higher cost, so
-the cheaper local model dominates it, and on this dataset a practitioner would
-never pay for the judge. The research payoff is the shape of that staircase,
-which quantifies how much AUROC each step up the cost ladder actually buys; here
-the free-to-model step buys everything and the model-to-api step buys nothing,
-precisely because the dataset is built around the errors overlap cannot see.
+Fifth, the semantic tiers earn their cost emphatically, and the frontier and
+agreement analyses make it sharp. Both the NLI model and the LLM judge separate
+the classes perfectly (AUROC, F1, accuracy all 1.000), beating every free
+detector by 0.43 to 0.55 AUROC with p < 0.001, and both are well calibrated so
+their scores read as confidences. The NLI model reproduces the judge (Cohen's
+kappa 0.98), while the free detectors fall to near-chance agreement (kappa 0.19
+to 0.21, down from about 0.45 on the easier 50-example set) and raise 34 to 49
+false alarms out of 100 that the judge rejects: on a hard set a surface detector
+degenerates into flagging almost everything. On the cost/accuracy frontier
+`lexical_overlap` (free, though barely above chance) and `nli_entailment` are
+Pareto-optimal; the single free-to-model step now buys the jump from 0.57 to
+1.00 AUROC. The paid `llm_judge` is pointedly *not* on the frontier, because it
+matches the NLI model's perfect quality at higher cost, so a practitioner would
+never pay for it on this data. The one caveat is that both semantic tiers remain
+perfect: the hard set has opened a wide, significant gap above the free tier but
+does not yet probe where a semantic model itself fails, which is the next
+challenge rather than a flaw in the present result.
 
 ## 8. Limitations
 
-The dataset is small and hand-written, which keeps it reproducible but limits
-statistical power and domain coverage. The bootstrap makes the cost in power
-explicit: the 95% AUROC intervals span 0.27 to 0.32, too wide to separate
-detectors a few points apart, and the cross-validated F1 swings by several
-points with the fold seed. The error types are a coarse taxonomy. The clearest
-limitation is now the dataset's difficulty ceiling: both the NLI model and the
-LLM judge reach a perfect AUROC, so the sample no longer discriminates among
-capable semantic models and the measured frontier saturates above the free tier.
+The dataset is modest in size (100 examples) and hand-written, which keeps it
+reproducible but limits domain coverage. Doubling it from 50 narrowed the
+bootstrap intervals, but the free detectors' 95% AUROC intervals are still about
+0.11 to 0.23 wide; that no longer matters for ranking them, since they all sit at
+chance, but it does mean the dataset cannot resolve small differences. The error
+types are a coarse taxonomy. The clearest limitation is now the dataset's
+difficulty ceiling for the *semantic* tiers: both the NLI model and the LLM judge
+reach a perfect AUROC, so the sample no longer discriminates among capable
+semantic models and the measured frontier saturates above the free tier.
 The NLI and judge scores are produced once (on a GPU and over a hosted gateway
 respectively) and cached rather than recomputed in continuous integration; the
 committed JSON makes those rows reproducible offline, but the live paths are not
@@ -374,16 +338,15 @@ statement about quality-per-tier rather than a precise dollar comparison.
 
 ## 9. Future Work
 
-The most pressing next step is a larger and harder dataset with annotated
-unsupported spans, built to be adversarial for semantic models and not only for
-surface overlap, so that it both resolves the gaps the current intervals leave
-open and pushes the NLI and judge tiers off their perfect scores to reveal where
-they fail and whether they then diverge. Beyond that: measured dollar and latency
-costs for the model and API tiers (which would turn the "NLI dominates the judge"
-result from a per-tier statement into a priced one), more baselines in the
-mid-cost tier (embedding similarity, smaller NLI models), and driving down the
-residual post-calibration ECE of the free detectors, which a larger dataset
-should help since the current maps are fit out-of-fold on only fifty examples.
+The most pressing next step is a dataset hard enough to challenge the semantic
+tiers, not just surface overlap: multi-step numeric reasoning, long contexts with
+distractors, retrieval-style noise, and domain-specific claims, with annotated
+unsupported spans. The current 100 examples already drive the free tier to
+chance, so the open question is where an entailment model or an LLM judge itself
+fails, and whether the two diverge there. Beyond that: measured dollar and
+latency costs for the model and API tiers (which would turn the "NLI dominates
+the judge" result from a per-tier statement into a priced one), and more
+mid-cost-tier baselines (embedding similarity, smaller NLI models).
 
 ## 10. Reproducibility
 

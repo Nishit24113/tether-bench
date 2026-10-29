@@ -62,69 +62,69 @@ run of a Qwen3 model (`qwen38-27b`) served over an OpenAI-compatible gateway.
 Both are stored as per-example scores and folded into the report offline (see
 [COMPUTE.md](COMPUTE.md)).
 
-## Results on the bundled sample (n=50, balanced)
+## Results on the bundled sample (n=100, balanced)
 
 ```
 detector           cost   auroc   f1      precision  recall  accuracy
 -----------------  -----  ------  ------  ---------  ------  --------
 nli_entailment     model  1.000   1.000   1.000      1.000   1.000
 llm_judge          api    1.000   1.000   1.000      1.000   1.000
-novel_token        free   0.779   0.774   0.649      0.960   0.720
-lexical_overlap    free   0.763   0.762   0.632      0.960   0.700
-tfidf_cosine       free   0.603   0.676   0.510      1.000   0.520
+lexical_overlap    free   0.572   0.706   0.558      0.960   0.600
+novel_token        free   0.562   0.682   0.557      0.880   0.590
 majority_constant  free   0.500   0.667   0.500      1.000   0.500
+tfidf_cosine       free   0.447   0.676   0.510      1.000   0.520
 ```
 
-The sample is built to be hard *for surface-overlap detectors*: many
-hallucinations reuse almost all of the context's vocabulary (an entity or number
-swapped), and many faithful answers paraphrase with few shared tokens. On this
-set the free detectors fall well short of the easy-case ceiling — `tfidf_cosine`
-drops to 0.60 AUROC, barely above the 0.50 floor, and the best lexical detector
-only reaches 0.78. The mean lexical overlap is 0.81 for faithful answers versus
-0.65 for hallucinated ones, a gap of just 0.16, so surface overlap no longer
-separates the classes cleanly.
+The 100 examples are built to be hard for surface overlap: hallucinations reuse
+the context's vocabulary (an entity, number, or quantifier swapped) and many
+require reasoning (numeric, multi-hop, scope, temporal), while faithful answers
+paraphrase or must be inferred. The mean lexical overlap is now 0.68 for faithful
+answers versus 0.67 for hallucinated ones, a gap of just **0.009**, so surface
+overlap carries almost no signal.
 
-The NLI model at the mid-cost tier, which reasons about entailment rather than
-word overlap, separates the two classes **perfectly** on this sample: AUROC,
-F1, and accuracy are all 1.000. That is the benchmark's core thesis made
-concrete — the vocabulary-reusing errors that defeat the free detectors are
-exactly the ones a semantic model catches, so the mid tier earns its cost. It
-also carries a caution, stated plainly in the limitations: a perfect score means
-this 50-example set is no longer hard enough to find where even an off-the-shelf
-NLI model fails, so the next job is a larger, more adversarial dataset that can
-map the real cost/accuracy frontier instead of saturating at the mid tier.
+The effect is stark. **Every free detector collapses to near chance**:
+`lexical_overlap` and `novel_token` reach only 0.57 and 0.56 AUROC, and
+`tfidf_cosine` falls to 0.45, *below* the 0.50 floor. Their 95% CIs all span 0.5,
+so on this set no free detector significantly beats the majority baseline.
 
-The `api` LLM judge (`qwen38-27b`) also scores a perfect 1.000 and is nearly
-calibrated (ECE 0.029). That both tiers saturate reinforces the caution, and it
-produces a sharp frontier result: the paid judge is **not** Pareto-optimal here,
-because the far cheaper local NLI model matches its quality. On this dataset you
-would never pay for the judge.
+**Both semantic tiers still score a perfect 1.000** (AUROC, F1, accuracy). The
+NLI model and the LLM judge beat every free detector by 0.43 to 0.55 AUROC, every
+gap significant at p < 0.001. This is the benchmark's thesis shown cleanly: the
+errors that defeat surface overlap are exactly the ones a semantic model catches,
+so the gap between the surface tier and the semantic tier is now wide and real,
+not a few noisy points. The honest caveat is that the semantic tiers are still
+perfect, so even this harder set does not yet probe where *they* fail; pushing
+NLI and the judge off 1.000 is the next frontier (subtle numeric reasoning at
+scale, long contexts, retrieval distractors).
 
 ### Are the gaps real?
 
-Fifty examples give wide error bars, so Tether reports them instead of letting a
-small gap pass as a result. Each AUROC gets a 95% CI from a stratified bootstrap
-(2000 resamples, seed 0), and detectors are compared by a paired bootstrap on
-identical resamples. The interesting question is *within the free tier*, where
-the gaps are small (the NLI tier wins everything significantly, p < 0.001, so it
-is the trivial comparison). Taking `novel_token`, the best free detector, as the
-reference:
+Each AUROC gets a 95% CI from a stratified bootstrap (2000 resamples, seed 0),
+and detectors are compared by a paired bootstrap on identical resamples. Two
+things are now clear-cut:
 
-| Detector | AUROC | AUROC 95% CI | Gap from `novel_token` | Gap 95% CI | p-value |
-|----------|-------|--------------|------------------------|------------|---------|
-| `novel_token` | 0.779 | [0.635, 0.902] | - | - | - |
-| `lexical_overlap` | 0.763 | [0.614, 0.890] | +0.016 | [-0.013, +0.070] | 0.776 |
-| `tfidf_cosine` | 0.603 | [0.435, 0.758] | +0.176 | [+0.040, +0.321] | 0.007 |
-| `majority_constant` | 0.500 | [0.500, 0.500] | +0.279 | [+0.135, +0.402] | < 0.001 |
+| Detector | AUROC | AUROC 95% CI | Beats the 0.5 floor? |
+|----------|-------|--------------|----------------------|
+| `nli_entailment` | 1.000 | [1.000, 1.000] | yes |
+| `llm_judge` | 1.000 | [1.000, 1.000] | yes |
+| `lexical_overlap` | 0.572 | [0.460, 0.688] | no (CI spans 0.5) |
+| `novel_token` | 0.562 | [0.443, 0.673] | no (CI spans 0.5) |
+| `tfidf_cosine` | 0.447 | [0.340, 0.566] | no |
 
-The top two free places are a statistical tie. `novel_token` and
-`lexical_overlap` give identical scores on 47 of the 50 examples (they only
-differ when an answer reuses a question word the context lacks), so their 0.016
-gap rests on three answers. Both beat `tfidf_cosine` and the constant floor
-significantly. With intervals 0.27 to 0.32 AUROC wide, separating two free
-detectors a few points apart will need a much larger dataset; separating the
-tiers does not, because the NLI model's advantage over every free detector is
-large and significant.
+First, **no free detector significantly beats the majority baseline** on the hard
+set: every free CI includes 0.5. Second, the semantic tier beats every free
+detector decisively. The paired bootstrap of the best detector (`nli_entailment`)
+against each free one gives differences of +0.43 to +0.55 AUROC, all with
+p < 0.001:
+
+| `nli_entailment` vs | AUROC diff | 95% CI | p-value |
+|---------------------|------------|--------|---------|
+| `lexical_overlap` | +0.428 | [+0.312, +0.540] | < 0.001 |
+| `novel_token` | +0.438 | [+0.327, +0.557] | < 0.001 |
+| `tfidf_cosine` | +0.553 | [+0.434, +0.660] | < 0.001 |
+
+So the tier separation is large and real, while the free detectors are
+indistinguishable from each other and from chance.
 
 ```python
 from tether import load_sample, default_detectors, detector_uncertainty
@@ -147,16 +147,14 @@ never measured on the data it was trained on:
 
 | Combination | AUROC | 95% CI |
 |-------------|-------|--------|
-| stacked free detectors (logistic, out-of-fold) | 0.726 | [0.566, 0.877] |
-| best single (`novel_token`) | 0.779 | - |
+| stacked free detectors (logistic, out-of-fold) | 0.647 | [0.540, 0.756] |
+| best single (`lexical_overlap`) | 0.572 | - |
 
-The answer is no. The stack scores **below** the best single detector
-(difference -0.053, 95% CI [-0.170, +0.050], p = 0.345, not significant): the
-free signals are largely redundant (`novel_token` and `lexical_overlap` already
-agree on 47 of 50 examples, and TF-IDF is the weakest), so a trained combiner
-only overfits slightly at this sample size rather than finding new signal. You
-cannot reach the semantic tier by blending surface heuristics, which is the point
-of paying for NLI.
+The answer is no. The stack nudges the point estimate up (+0.074) but the gain is
+not significant (95% CI [-0.066, +0.231], p = 0.333), and it stays far below the
+semantic tier. The free signals are largely redundant, so combining them cannot
+clear the free-tier ceiling. You cannot reach the semantic tier by blending
+surface heuristics, which is the point of paying for NLI.
 
 ```python
 from tether import load_sample, default_detectors, cross_val_stack
@@ -174,12 +172,12 @@ promises this, and the calibration numbers show it does not hold:
 
 | Detector | AUROC | ECE | ECE 95% CI | MCE | Brier |
 |----------|-------|-----|------------|-----|-------|
-| `nli_entailment` | 1.000 | 0.009 | [0.002, 0.019] | 0.263 | 0.001 |
-| `llm_judge` | 1.000 | 0.029 | [0.012, 0.060] | 0.720 | 0.011 |
+| `nli_entailment` | 1.000 | 0.029 | [0.016, 0.044] | 0.370 | 0.006 |
+| `llm_judge` | 1.000 | 0.024 | [0.014, 0.042] | 0.720 | 0.006 |
 | `majority_constant` | 0.500 | 0.000 | [0.000, 0.000] | 0.000 | 0.250 |
-| `tfidf_cosine` | 0.603 | 0.187 | [0.135, 0.344] | 0.928 | 0.265 |
-| `lexical_overlap` | 0.763 | 0.304 | [0.242, 0.391] | 1.000 | 0.281 |
-| `novel_token` | 0.779 | 0.321 | [0.258, 0.399] | 1.000 | 0.288 |
+| `tfidf_cosine` | 0.447 | 0.211 | [0.157, 0.320] | 0.919 | 0.319 |
+| `lexical_overlap` | 0.572 | 0.321 | [0.262, 0.404] | 0.972 | 0.333 |
+| `novel_token` | 0.562 | 0.378 | [0.314, 0.453] | 0.972 | 0.362 |
 
 ECE is the bin-weighted gap between a detector's mean score and the observed
 faithful rate (lower is better); Brier is the mean squared error of the scores
@@ -190,20 +188,18 @@ reading the column you expect:
   best-calibrated free detector — because on a balanced set a constant 0.5
   exactly matches the 50% base rate. Its AUROC is still 0.5. A score can be
   perfectly calibrated and carry no signal.
-- **The useful free detectors are badly miscalibrated.** `novel_token` ranks
-  best among the free detectors but has the worst ECE: in its 0.6-0.7 score band
-  only about 14% of answers are actually faithful, not 65%. Reading its raw score
-  as a confidence would be far off, so deploying it as a probability would need a
-  calibration map (Platt or isotonic) fit on a held-out split.
+- **The free detectors are badly miscalibrated**, and worse on the hard set:
+  `novel_token` reaches ECE 0.378, so its raw score is nowhere near a probability.
+  Deploying it as a confidence would need a calibration map fit on a held-out
+  split.
 - **The heavy tiers are the exception.** Both are best-ranked (AUROC 1.000) and
-  nearly calibrated: NLI at ECE 0.009 (Brier 0.001) and the judge at ECE 0.029
-  (Brier 0.011). Their scores track the true faithful rate, so unlike the free
-  detectors they can be read as probabilities. That is the model/api tiers
-  buying trustworthy confidence, not just a better ordering.
+  nearly calibrated: NLI at ECE 0.029 and the judge at ECE 0.024 (Brier 0.006
+  each). Their scores track the true faithful rate, so unlike the free detectors
+  they can be read as probabilities. That is the model/api tiers buying
+  trustworthy confidence, not just a better ordering.
 
-Among the free detectors, `tfidf_cosine` has the lowest point ECE despite the
-worst AUROC, but its CI overlaps the others, so that is a hint rather than a
-result. Best-ranked and best-calibrated are simply different axes.
+Best-ranked and best-calibrated are different axes, but here they coincide: the
+semantic tiers win both, and the free detectors lose both.
 
 ```python
 from tether import load_sample, default_detectors, detector_calibration
@@ -227,21 +223,23 @@ tuned on.
 | Detector | Raw ECE | Isotonic ECE | Platt ECE | Raw Brier | Isotonic Brier |
 |----------|---------|--------------|-----------|-----------|----------------|
 | `majority_constant` | 0.000 | 0.000 | 0.000 | 0.250 | 0.250 |
-| `lexical_overlap` | 0.304 | 0.190 | 0.169 | 0.281 | 0.223 |
-| `novel_token` | 0.321 | 0.199 | 0.179 | 0.288 | 0.204 |
-| `tfidf_cosine` | 0.187 | 0.174 | 0.150 | 0.265 | 0.259 |
-| `nli_entailment` | 0.009 | 0.005 | 0.000 | 0.001 | 0.001 |
-| `llm_judge` | 0.029 | 0.017 | 0.020 | 0.011 | 0.010 |
+| `lexical_overlap` | 0.321 | 0.118 | 0.090 | 0.333 | 0.242 |
+| `novel_token` | 0.378 | 0.117 | 0.092 | 0.362 | 0.262 |
+| `tfidf_cosine` | 0.211 | 0.076 | 0.008 | 0.319 | 0.256 |
+| `nli_entailment` | 0.029 | 0.007 | 0.000 | 0.006 | 0.001 |
+| `llm_judge` | 0.024 | 0.007 | 0.010 | 0.006 | 0.004 |
 
-A map roughly halves the free detectors' ECE (`lexical_overlap` 0.30 to ~0.17,
-`novel_token` 0.32 to ~0.18) and lowers their Brier score too, so the cheap
-scores *can* be made into usable probabilities. Two honest caveats: the
-already-calibrated detectors (the constant floor and both heavy tiers) have
-nothing to gain and are left alone, and the residual ECE after calibration is
-still ~0.15-0.20, because fitting a reliable map out-of-fold on 50 examples only
-goes so far. The practical rule is that if you need a cheap detector's output as
-a confidence, fit a calibration map on a held-out split rather than reading the
-raw score as a probability.
+A map cuts the free detectors' ECE by roughly two thirds (`novel_token` 0.378 to
+~0.09-0.12, `lexical_overlap` 0.321 to ~0.09-0.12, and Platt takes `tfidf_cosine`
+from 0.211 to 0.008) and lowers their Brier score too, so the cheap scores *can*
+be made into usable probabilities even though they rank poorly. Two honest
+caveats: the already-calibrated detectors (the constant floor and both heavy
+tiers) have nothing to gain and are left alone, and a well-calibrated score is
+still not a useful one (a recalibrated free detector reports honest ~0.5-ish
+probabilities precisely because it cannot tell the classes apart). The practical
+rule is that if you need a cheap detector's output as a confidence, fit a
+calibration map on a held-out split rather than reading the raw score as a
+probability.
 
 ```python
 from tether import load_sample, default_detectors, detector_recalibration
@@ -254,7 +252,7 @@ rc["lexical_overlap"]["raw_ece"], rc["lexical_overlap"]["cal_ece"]  # before vs 
 ### How optimistic is the reported F1?
 
 The F1 above is measured at each detector's F1-optimal threshold, picked on the
-same 50 examples it is then scored on. That is an oracle operating point: a
+same 100 examples it is then scored on. That is an oracle operating point: a
 deployment has to fix its threshold first. To measure the optimism, Tether
 re-estimates F1 with 5-fold stratified cross-validation, choosing the threshold
 on the training folds and scoring on the held-out fold:
@@ -262,21 +260,19 @@ on the training folds and scoring on the held-out fold:
 | Detector | Oracle F1 | CV F1 | Optimism | CV precision | CV recall |
 |----------|-----------|-------|----------|--------------|-----------|
 | `nli_entailment` | 1.000 | 1.000 | +0.000 | 1.000 | 1.000 |
-| `llm_judge` | 1.000 | 0.980 | +0.020 | 0.962 | 1.000 |
-| `novel_token` | 0.774 | 0.733 | +0.041 | 0.629 | 0.880 |
-| `lexical_overlap` | 0.762 | 0.721 | +0.041 | 0.611 | 0.880 |
+| `llm_judge` | 1.000 | 0.990 | +0.010 | 0.980 | 1.000 |
+| `lexical_overlap` | 0.706 | 0.696 | +0.010 | 0.553 | 0.940 |
 | `majority_constant` | 0.667 | 0.667 | +0.000 | 0.500 | 1.000 |
-| `tfidf_cosine` | 0.676 | 0.629 | +0.047 | 0.489 | 0.880 |
+| `tfidf_cosine` | 0.676 | 0.667 | +0.009 | 0.505 | 0.980 |
+| `novel_token` | 0.682 | 0.638 | +0.044 | 0.500 | 0.880 |
 
-The oracle F1 overstates the honest, held-out number by about 0.04 for the
-signal-carrying free detectors. `majority_constant` has no gap because it flags
-every answer at any threshold, so there is nothing to tune, and `nli_entailment`
-has none because it separates the classes perfectly at any threshold the folds
-pick. The free-detector gap is modest here because the F1-optimal threshold is
-stable across folds (~0.87 for the lexical detectors), but at this sample size
-the cross-validated estimate is itself noisy: the gap moves between about 0.04
-and 0.09 depending on the fold seed, which is one more reason the dataset needs
-to grow.
+The oracle F1 overstates the honest, held-out number only slightly here (under
+0.01 for most detectors, 0.044 for `novel_token`). The free detectors' F1 looks
+deceptively healthy (~0.68-0.71) only because at a low threshold they flag almost
+everything, so recall is high and precision collapses to ~0.50-0.55; F1 at a
+single operating point hides what AUROC makes plain, that they barely separate
+the classes. Doubling the dataset to 100 also roughly halved the optimism gaps
+seen at n=50, a direct statistical-power gain.
 
 ```python
 from tether import load_sample, default_detectors, detector_validation
@@ -296,23 +292,25 @@ every faithful one with how it is supported. Tether reports per-category
 ```
 Detection recall by error type (hallucinated examples)
 
-error_type            majority_constant  lexical_overlap  novel_token  tfidf_cosine
---------------------  -----------------  ---------------  -----------  ------------
-contradiction         1.00               1.00             1.00         1.00
-entity_swap           1.00               0.86             0.86         1.00
-numeric               1.00               1.00             1.00         1.00
-unsupported_addition  1.00               1.00             1.00         1.00
+error_type            majority  lexical  novel  tfidf  nli   judge
+--------------------  --------  -------  -----  -----  ----  -----
+contradiction         1.00      0.89     0.89   1.00   1.00  1.00
+entity_swap           1.00      0.92     0.92   1.00   1.00  1.00
+multi_hop             1.00      1.00     0.75   1.00   1.00  1.00
+numeric               1.00      1.00     1.00   1.00   1.00  1.00
+temporal              1.00      1.00     0.00   1.00   1.00  1.00
+unsupported_addition  1.00      1.00     1.00   1.00   1.00  1.00
 ```
 
-On the harder set the free detectors reach these high per-type recalls only by
-moving their threshold down and flagging almost everything (precision falls to
-0.51-0.65), so recall at a single threshold is no longer the honest lens. AUROC
-is. `entity_swap` still has the lowest recall for the token-overlap detectors,
-since swapping one entity leaves the overlap high, and the AUROC drop shows the
-free detectors lose separability across the board when hallucinations reuse the
-context's words. This is the regime where a semantic NLI model or an LLM judge
-should earn its cost — and the leaderboard above confirms it does: the NLI model
-scores a perfect AUROC on exactly the errors the free detectors cannot separate.
+These recalls look high only because at their low F1-optimal threshold the free
+detectors flag almost everything as hallucinated (precision collapses to
+~0.50-0.55), so recall at a single threshold is not the honest lens; AUROC is,
+and there the free detectors sit near 0.5. The per-type view still exposes
+specific blind spots, for example `novel_token` misses every `temporal` error
+(0.00) and a quarter of the `multi_hop` ones, because a wrong answer built from
+words already in the context looks grounded to a token-overlap detector. The NLI
+model and the judge catch every category, which is where the semantic tiers earn
+their cost.
 
 Per-example **error analysis** (`tether/error_analysis.py`,
 `python scripts/error_analysis.py`) makes this concrete: at its threshold the
@@ -329,22 +327,22 @@ has a real answer on this sample:
 
 | Detector vs judge | Agreement | Cohen's kappa | Judge-only catches | Cheap-only flags |
 |-------------------|-----------|---------------|--------------------|------------------|
-| `nli_entailment` | 0.980 | 0.960 | 1 | 0 |
-| `novel_token` | 0.740 | 0.470 | 1 | 12 |
-| `lexical_overlap` | 0.720 | 0.428 | 1 | 13 |
-| `tfidf_cosine` | 0.540 | 0.043 | 0 | 23 |
-| `majority_constant` | 0.520 | 0.000 | 0 | 24 |
+| `nli_entailment` | 0.990 | 0.980 | 1 | 0 |
+| `lexical_overlap` | 0.610 | 0.209 | 2 | 37 |
+| `novel_token` | 0.600 | 0.191 | 6 | 34 |
+| `tfidf_cosine` | 0.530 | 0.042 | 0 | 47 |
+| `majority_constant` | 0.510 | 0.000 | 0 | 49 |
 
-The NLI model essentially *is* the judge here (kappa 0.96). The best free
-detectors land at moderate agreement (kappa ~0.43-0.47), and the way they fall
-short is one-sided: the `cheap-only flags` column shows they raise 12-13 false
-alarms the judge rejects, while missing almost nothing the judge catches. In
-other words, the cheap detectors over-flag faithful paraphrases rather than
-letting hallucinations through, which is exactly the surface-overlap failure the
-free tier was shown to have. `tfidf_cosine` and the constant floor agree with the
-judge no better than chance (kappa ≈ 0). This is the benchmark's founding
-question answered: on this data the cheap detectors are a coarse proxy for the
-judge, and the NLI tier is a near-perfect one.
+The NLI model essentially *is* the judge here (kappa 0.98). The free detectors,
+by contrast, now agree with the judge barely above chance (kappa 0.19-0.21, down
+from ~0.45 on the easier 50-example set), and the way they fall short is
+one-sided and extreme: the `cheap-only flags` column shows they raise 34-49 false
+alarms the judge rejects, out of 100 examples, while catching little the judge
+does. On a hard set where overlap no longer separates the classes, the cheap
+detectors degenerate into flagging almost everything. This is the benchmark's
+founding question answered sharply: a surface detector is at best a coarse proxy
+for the judge and collapses as the task gets harder, while the NLI tier tracks
+the judge almost perfectly.
 
 The judge is provider-decoupled — `LLMJudgeDetector` takes any `judge_fn`
 mapping an example to a faithfulness score, so it's trivially mockable and the
@@ -419,21 +417,21 @@ detector           cost_tier  cost  auroc  frontier
 -----------------  ---------  ----  -----  --------
 nli_entailment     model      0.30  1.000  *
 llm_judge          api        1.00  1.000
-novel_token        free       0.00  0.779  *
-lexical_overlap    free       0.00  0.763
-tfidf_cosine       free       0.00  0.603
+lexical_overlap    free       0.00  0.572  *
+novel_token        free       0.00  0.562
 majority_constant  free       0.00  0.500
+tfidf_cosine       free       0.00  0.447
 ```
 
-Two detectors are Pareto-optimal: `novel_token` (cheapest useful option) and
-`nli_entailment` (highest quality for the lowest cost that achieves it). The
-single step up from the free tier to the NLI model buys the jump from 0.78 to
-1.00 AUROC on this sample. The most pointed result is that the **paid `llm_judge`
-is not on the frontier**: it matches NLI's perfect AUROC but costs more, so the
-cheaper local model dominates it. On this dataset you would never pay for the
-judge. The research payoff is the shape of that staircase — *how much AUROC each
-step up the cost ladder actually buys* — and here the free→model step buys
-everything while the model→api step buys nothing.
+Two detectors are Pareto-optimal: `lexical_overlap` (the cheapest, though barely
+better than chance here) and `nli_entailment` (top quality at the lowest cost
+that reaches it). The single step up from the free tier to the NLI model now buys
+the jump from 0.57 to 1.00 AUROC, a far larger gap than on the easy set. The most
+pointed result stands: the **paid `llm_judge` is not on the frontier**, because it
+matches NLI's perfect AUROC at higher cost, so the cheaper local model dominates
+it. The research payoff is the shape of that staircase — *how much AUROC each step
+up the cost ladder actually buys* — and on a hard benchmark the free→model step
+buys almost everything while the model→api step buys nothing.
 
 ```python
 from tether import load_sample, default_detectors, run_benchmark, build_frontier, format_frontier
@@ -462,8 +460,8 @@ costs = {
 build_frontier(bench["leaderboard"], cost_scores=normalized_cost_scores(costs))
 ```
 
-On the 50-example sample, judging every answer with an LLM judge at Opus-tier
-pricing costs about **$0.053** (~$0.0011/example), the NLI tier about **$0.0014**
+On the 100-example sample, judging every answer with an LLM judge at Opus-tier
+pricing costs about **$0.105** (~$0.0011/example), the NLI tier about **$0.0028**
 of GPU time, and the free tier **$0**. Normalized, that is `free 0.0, model 0.026,
 api 1.0` — the measured mid tier is far cheaper than the placeholder 0.3, which is
 exactly the kind of correction real cost numbers make to the frontier.
@@ -506,7 +504,7 @@ tether/
   recalibration.py   # isotonic/Platt calibration maps: can the cheap scores become probabilities?
   ensemble.py        # out-of-fold logistic stack of the free detectors: do they combine to win?
   baselines/         # majority, lexical, novel-token, tf-idf, nli, llm-judge
-data/sample.jsonl    # bundled labeled dataset (50 examples, runs offline), error-type annotated
+data/sample.jsonl    # bundled labeled dataset (100 examples, runs offline), error-type annotated
 scripts/run_benchmark.py   # prints leaderboard + breakdown + frontier
 scripts/generate_report.py # regenerates RESULTS.md
 scripts/score_detector.py  # score one detector, cache to JSON (HPC job entry point)
@@ -520,14 +518,15 @@ tests/               # 219 unit tests
 
 ## Roadmap
 
-- **Grow the dataset into a harder, more adversarial set** of hundreds of
-  examples with annotated unsupported spans. Both the NLI *and* judge tiers score
-  a perfect AUROC, so the current 50 examples no longer challenge a semantic
-  model and the frontier saturates; a harder set is needed to find where these
-  tiers fail and to map the real staircase.
+- **Push the dataset hard enough to challenge the semantic tiers.** The 100
+  harder examples already drive the free tier to chance, but NLI and the judge
+  still score a perfect AUROC, so they are not yet stressed. The next set needs
+  errors that are hard for entailment models too: multi-step numeric reasoning,
+  long contexts with distractors, retrieval-style noise, and domain-specific
+  claims, with annotated unsupported spans.
 - **Wire live measured latency/tokens** from real NLI and judge runs into the cost model
 
-_Done:_ 50-example error-type / support-type annotated dataset with integrity
+_Done:_ 100-example error-type / support-type annotated dataset with integrity
 validation and a difficulty (lexical-overlap separation) summary; per-category
 recall breakdown; NLI-entailment mid-cost baseline (real cached scores in
 `out/nli.json`, perfect AUROC on the sample) and an LLM-judge api tier run over
@@ -540,8 +539,8 @@ score caching so the heavy tiers run once on HPC and the analysis stays offline
 ([COMPUTE.md](COMPUTE.md)); a cost model that prices the frontier in real dollars
 per tier; stratified bootstrap CIs on every AUROC and a paired bootstrap test for
 leaderboard gaps; calibration analysis (reliability bins, ECE/MCE, Brier) showing
-the free detectors rank well but are not calibrated probabilities while the NLI
-tier is; k-fold cross-validated operating points that quantify how much the
+the free detectors are not calibrated probabilities while the semantic tiers are;
+k-fold cross-validated operating points that quantify how much the
 oracle-threshold F1 overstates the honest held-out F1; post-hoc recalibration
 (isotonic and Platt maps, cross-validated) that roughly halves the free
 detectors' calibration error; an out-of-fold logistic stack showing the free

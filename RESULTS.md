@@ -2,14 +2,14 @@
 
 Dataset: 100 examples (50 faithful, 50 hallucinated).
 
-_Omitted this run: nli_entailment, llm_judge — their cached scores do not cover all 100 examples. Re-run `scripts/score_detector.py` on the new examples to restore these tiers._
-
 ## Leaderboard
 
 Ranked by AUROC (threshold-free). Precision/recall/F1 are reported at each detector's F1-optimal threshold. AUROC 95% CIs come from a stratified bootstrap (2000 resamples, seed 0).
 
 | Detector | Cost | AUROC | AUROC 95% CI | F1 | Precision | Recall | Accuracy |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| nli_entailment | model | 1.000 | [1.000, 1.000] | 1.000 | 1.000 | 1.000 | 1.000 |
+| llm_judge | api | 1.000 | [1.000, 1.000] | 1.000 | 1.000 | 1.000 | 1.000 |
 | lexical_overlap | free | 0.572 | [0.460, 0.688] | 0.706 | 0.558 | 0.960 | 0.600 |
 | novel_token | free | 0.562 | [0.443, 0.673] | 0.682 | 0.557 | 0.880 | 0.590 |
 | majority_constant | free | 0.500 | [0.500, 0.500] | 0.667 | 0.500 | 1.000 | 0.500 |
@@ -17,13 +17,15 @@ Ranked by AUROC (threshold-free). Precision/recall/F1 are reported at each detec
 
 ## Are the gaps real?
 
-Paired stratified bootstrap of the best detector (lexical_overlap) against each other detector, scored on identical resamples. Two-sided p-values; significant means p < 0.05. The last column counts the examples the two detectors score differently, which is all the evidence a paired comparison has.
+Paired stratified bootstrap of the best detector (nli_entailment) against each other detector, scored on identical resamples. Two-sided p-values; significant means p < 0.05. The last column counts the examples the two detectors score differently, which is all the evidence a paired comparison has.
 
-| lexical_overlap vs | AUROC diff | 95% CI | p-value | Significant | Examples scored differently |
+| nli_entailment vs | AUROC diff | 95% CI | p-value | Significant | Examples scored differently |
 | --- | --- | --- | --- | --- | --- |
-| novel_token | +0.011 | [-0.044, +0.066] | 0.661 | no | 17/100 |
-| majority_constant | +0.072 | [-0.040, +0.188] | 0.218 | no | 94/100 |
-| tfidf_cosine | +0.126 | [+0.055, +0.207] | < 0.001 | yes | 99/100 |
+| llm_judge | +0.000 | [+0.000, +0.000] | 1.000 | no | 100/100 |
+| lexical_overlap | +0.428 | [+0.312, +0.540] | < 0.001 | yes | 100/100 |
+| novel_token | +0.438 | [+0.327, +0.557] | < 0.001 | yes | 100/100 |
+| majority_constant | +0.500 | [+0.500, +0.500] | < 0.001 | yes | 100/100 |
+| tfidf_cosine | +0.553 | [+0.434, +0.660] | < 0.001 | yes | 100/100 |
 
 ## Do the free signals combine to beat the best single detector?
 
@@ -43,6 +45,8 @@ AUROC only asks whether a detector *ranks* faithful answers above hallucinated o
 | Detector | ECE | ECE 95% CI | MCE | Brier |
 | --- | --- | --- | --- | --- |
 | majority_constant | 0.000 | [0.000, 0.000] | 0.000 | 0.250 |
+| llm_judge | 0.024 | [0.014, 0.042] | 0.720 | 0.006 |
+| nli_entailment | 0.029 | [0.016, 0.044] | 0.370 | 0.006 |
 | tfidf_cosine | 0.211 | [0.157, 0.320] | 0.919 | 0.319 |
 | lexical_overlap | 0.321 | [0.262, 0.404] | 0.972 | 0.333 |
 | novel_token | 0.378 | [0.314, 0.453] | 0.972 | 0.362 |
@@ -57,6 +61,8 @@ The miscalibration above is a property of the raw scores, not a verdict on the d
 | lexical_overlap | 0.321 | 0.118 | 0.090 | 0.333 | 0.242 |
 | novel_token | 0.378 | 0.117 | 0.092 | 0.362 | 0.262 |
 | tfidf_cosine | 0.211 | 0.076 | 0.008 | 0.319 | 0.256 |
+| nli_entailment | 0.029 | 0.007 | 0.000 | 0.006 | 0.001 |
+| llm_judge | 0.024 | 0.007 | 0.010 | 0.006 | 0.004 |
 
 ## How optimistic is the F1?
 
@@ -64,6 +70,8 @@ The leaderboard F1 uses each detector's F1-optimal threshold, tuned on the same 
 
 | Detector | Oracle F1 | CV F1 | Optimism | CV precision | CV recall |
 | --- | --- | --- | --- | --- | --- |
+| nli_entailment | 1.000 | 1.000 | +0.000 | 1.000 | 1.000 |
+| llm_judge | 1.000 | 0.990 | +0.010 | 0.980 | 1.000 |
 | lexical_overlap | 0.706 | 0.696 | +0.010 | 0.553 | 0.940 |
 | majority_constant | 0.667 | 0.667 | +0.000 | 0.500 | 1.000 |
 | tfidf_cosine | 0.676 | 0.667 | +0.009 | 0.505 | 0.980 |
@@ -73,14 +81,14 @@ The leaderboard F1 uses each detector's F1-optimal threshold, tuned on the same 
 
 Recall of hallucination detection, per annotated error type, at each detector's F1-optimal threshold.
 
-| Error type | majority_constant | lexical_overlap | novel_token | tfidf_cosine |
-| --- | --- | --- | --- | --- |
-| contradiction | 1.00 | 0.89 | 0.89 | 1.00 |
-| entity_swap | 1.00 | 0.92 | 0.92 | 1.00 |
-| multi_hop | 1.00 | 1.00 | 0.75 | 1.00 |
-| numeric | 1.00 | 1.00 | 1.00 | 1.00 |
-| temporal | 1.00 | 1.00 | 0.00 | 1.00 |
-| unsupported_addition | 1.00 | 1.00 | 1.00 | 1.00 |
+| Error type | majority_constant | lexical_overlap | novel_token | tfidf_cosine | nli_entailment | llm_judge |
+| --- | --- | --- | --- | --- | --- | --- |
+| contradiction | 1.00 | 0.89 | 0.89 | 1.00 | 1.00 | 1.00 |
+| entity_swap | 1.00 | 0.92 | 0.92 | 1.00 | 1.00 | 1.00 |
+| multi_hop | 1.00 | 1.00 | 0.75 | 1.00 | 1.00 | 1.00 |
+| numeric | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| temporal | 1.00 | 1.00 | 0.00 | 1.00 | 1.00 | 1.00 |
+| unsupported_addition | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
 
 ## Cost/accuracy frontier
 
@@ -92,3 +100,17 @@ Quality axis = auroc. Cost is a relative per-tier score (free 0.0, model 0.3, ap
 | novel_token | free | 0.00 | 0.562 |  |
 | majority_constant | free | 0.00 | 0.500 |  |
 | tfidf_cosine | free | 0.00 | 0.447 |  |
+| nli_entailment | model | 0.30 | 1.000 | yes |
+| llm_judge | api | 1.00 | 1.000 |  |
+
+## How well do the cheap detectors agree with the judge?
+
+Tether's thesis is that a cheap detector is useful insofar as it agrees with the LLM judge (llm_judge). Each cheap detector's hallucination calls (at its F1-optimal threshold) are compared with the judge's (at 0.5). Cohen's kappa corrects for chance agreement; `judge-only catches` are hallucinations the judge flagged and the cheap detector missed, and `cheap-only flags` are answers the cheap detector flagged that the judge called faithful.
+
+| Detector vs judge | Agreement | Cohen kappa | Judge-only catches | Cheap-only flags |
+| --- | --- | --- | --- | --- |
+| nli_entailment | 0.990 | 0.980 | 1 | 0 |
+| lexical_overlap | 0.610 | 0.209 | 2 | 37 |
+| novel_token | 0.600 | 0.191 | 6 | 34 |
+| tfidf_cosine | 0.530 | 0.042 | 0 | 47 |
+| majority_constant | 0.510 | 0.000 | 0 | 49 |
