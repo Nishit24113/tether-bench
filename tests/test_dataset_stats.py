@@ -79,9 +79,10 @@ def test_bundled_sample_is_valid():
 
 def test_bundled_sample_covers_all_error_types():
     report = dataset_report(load_sample())
-    assert set(report["by_error_type"]) == {
-        "numeric", "entity_swap", "unsupported_addition", "contradiction"
-    }
+    # the four original error types are always present; harder examples add more
+    assert {"numeric", "entity_swap", "unsupported_addition", "contradiction"} <= set(
+        report["by_error_type"]
+    )
 
 
 def test_format_dataset_report_renders():

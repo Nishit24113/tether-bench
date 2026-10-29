@@ -107,6 +107,7 @@ def test_measured_costs_feed_frontier():
 
 def test_api_cost_on_real_sample():
     from tether import load_sample
-    est = estimate_api_cost(load_sample(), input_price_per_1m=4.0, output_price_per_1m=20.0)
-    assert est.n == 50
+    examples = load_sample()
+    est = estimate_api_cost(examples, input_price_per_1m=4.0, output_price_per_1m=20.0)
+    assert est.n == len(examples)
     assert est.total_usd > 0

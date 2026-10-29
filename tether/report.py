@@ -200,7 +200,20 @@ def generate_report(
 
     Deterministic for a given detector set and dataset, so it can be regenerated
     into RESULTS.md and cited by the paper.
+
+    Detectors whose (cached) scores do not cover every example are dropped with a
+    note, so a report still generates after the dataset grows beyond a heavy
+    tier's cache, until that tier is re-scored.
     """
+    usable, skipped = [], []
+    for d in detectors:
+        try:
+            d.score_all(examples)
+            usable.append(d)
+        except KeyError:
+            skipped.append(d.name)
+    detectors = usable
+
     benchmark = run_benchmark(detectors, examples)
     breakdowns = run_category_breakdown(detectors, examples)
     frontier = build_frontier(benchmark["leaderboard"], metric=metric)
@@ -217,6 +230,15 @@ def generate_report(
         f"Dataset: {bal['total']} examples "
         f"({bal['faithful']} faithful, {bal['hallucinated']} hallucinated).",
         "",
+    ]
+    if skipped:
+        parts += [
+            f"_Omitted this run: {', '.join(skipped)} — their cached scores do not "
+            f"cover all {bal['total']} examples. Re-run `scripts/score_detector.py` "
+            "on the new examples to restore these tiers._",
+            "",
+        ]
+    parts += [
         "## Leaderboard",
         "",
         "Ranked by AUROC (threshold-free). Precision/recall/F1 are reported at "
