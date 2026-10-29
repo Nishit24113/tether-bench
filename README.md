@@ -187,6 +187,43 @@ cal["novel_token"]["ece"]    # expected calibration error
 cal["novel_token"]["bins"]   # reliability bins: mean_score vs frac_faithful
 ```
 
+### Can the cheap scores be fixed into probabilities?
+
+Miscalibration is a property of the *raw* scores, not a verdict on the detectors.
+A post-hoc calibration map can turn the scores into probabilities. Tether fits
+two, isotonic (a monotone step map, via Pool Adjacent Violators) and Platt (a
+logistic map), from score to observed faithful rate. The honest test is
+cross-validated: the map is fit on training folds and applied to a held-out
+fold, so the post-calibration numbers are never measured on the data the map was
+tuned on.
+
+| Detector | Raw ECE | Isotonic ECE | Platt ECE | Raw Brier | Isotonic Brier |
+|----------|---------|--------------|-----------|-----------|----------------|
+| `majority_constant` | 0.000 | 0.000 | 0.000 | 0.250 | 0.250 |
+| `lexical_overlap` | 0.304 | 0.190 | 0.169 | 0.281 | 0.223 |
+| `novel_token` | 0.321 | 0.199 | 0.179 | 0.288 | 0.204 |
+| `tfidf_cosine` | 0.187 | 0.174 | 0.150 | 0.265 | 0.259 |
+| `nli_entailment` | 0.009 | 0.005 | 0.000 | 0.001 | 0.001 |
+| `llm_judge` | 0.029 | 0.017 | 0.020 | 0.011 | 0.010 |
+
+A map roughly halves the free detectors' ECE (`lexical_overlap` 0.30 to ~0.17,
+`novel_token` 0.32 to ~0.18) and lowers their Brier score too, so the cheap
+scores *can* be made into usable probabilities. Two honest caveats: the
+already-calibrated detectors (the constant floor and both heavy tiers) have
+nothing to gain and are left alone, and the residual ECE after calibration is
+still ~0.15-0.20, because fitting a reliable map out-of-fold on 50 examples only
+goes so far. The practical rule is that if you need a cheap detector's output as
+a confidence, fit a calibration map on a held-out split rather than reading the
+raw score as a probability.
+
+```python
+from tether import load_sample, default_detectors, detector_recalibration
+
+examples = load_sample()
+rc = detector_recalibration(default_detectors(examples), examples, method="isotonic")
+rc["lexical_overlap"]["raw_ece"], rc["lexical_overlap"]["cal_ece"]  # before vs after
+```
+
 ### How optimistic is the reported F1?
 
 The F1 above is measured at each detector's F1-optimal threshold, picked on the
@@ -408,7 +445,7 @@ exactly the kind of correction real cost numbers make to the frontier.
 
 ```bash
 pip install -e ".[dev]"
-pytest                          # 198 tests, all stdlib
+pytest                          # 211 tests, all stdlib
 python scripts/run_benchmark.py # prints the leaderboard above
 ```
 
@@ -439,6 +476,7 @@ tether/
   stats.py           # stratified bootstrap CIs + paired significance test for leaderboard gaps
   calibration.py     # reliability bins, Brier, ECE/MCE: are the scores real probabilities?
   validation.py      # k-fold cross-validated F1 vs oracle F1: how optimistic is the threshold?
+  recalibration.py   # isotonic/Platt calibration maps: can the cheap scores become probabilities?
   baselines/         # majority, lexical, novel-token, tf-idf, nli, llm-judge
 data/sample.jsonl    # bundled labeled dataset (50 examples, runs offline), error-type annotated
 scripts/run_benchmark.py   # prints leaderboard + breakdown + frontier
@@ -449,7 +487,7 @@ out/judge.json       # cached LLM-judge (qwen38-27b) scores, folded into the rep
 PAPER.md                   # working paper draft
 RESULTS.md                 # generated results, cited by the paper
 COMPUTE.md                 # producing the model/api tiers on a GPU and caching them
-tests/               # 198 unit tests
+tests/               # 211 unit tests
 ```
 
 ## Roadmap
@@ -476,7 +514,9 @@ per tier; stratified bootstrap CIs on every AUROC and a paired bootstrap test fo
 leaderboard gaps; calibration analysis (reliability bins, ECE/MCE, Brier) showing
 the free detectors rank well but are not calibrated probabilities while the NLI
 tier is; k-fold cross-validated operating points that quantify how much the
-oracle-threshold F1 overstates the honest held-out F1.
+oracle-threshold F1 overstates the honest held-out F1; post-hoc recalibration
+(isotonic and Platt maps, cross-validated) that roughly halves the free
+detectors' calibration error.
 
 ## Reproducibility
 

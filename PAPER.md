@@ -21,8 +21,10 @@ baselines spanning three cost tiers (free lexical heuristics, a local NLI model,
 and a paid LLM judge), agreement metrics against the judge, a cost/accuracy
 frontier that makes the trade-off explicit, bootstrap confidence intervals with
 paired significance tests so that small leaderboard gaps are not over-read, a
-calibration analysis of whether the scores can be read as probabilities, and
-cross-validated operating points that measure how optimistic the reported F1 is.
+calibration analysis of whether the scores can be read as probabilities,
+cross-validated operating points that measure how optimistic the reported F1 is,
+and post-hoc calibration maps that recover usable probabilities from the cheap
+scores.
 On a deliberately hard sample, where hallucinations reuse most of the context
 vocabulary and faithful answers paraphrase with few shared tokens, the free
 detectors fall well short: the best reaches only 0.78 AUROC (95% CI 0.64 to
@@ -145,7 +147,11 @@ probability of being faithful, we report the expected calibration error (ECE,
 the bin-count-weighted mean gap between mean score and observed faithful rate
 over ten equal-width bins), the maximum single-bin gap (MCE), and the Brier
 score (mean squared error of the scores as probabilities). ECE carries the same
-stratified bootstrap interval as the AUROC numbers.
+stratified bootstrap interval as the AUROC numbers. Because miscalibration is a
+property of the raw scores rather than of the detector, we also fit post-hoc
+calibration maps (isotonic regression and Platt scaling) out-of-fold and report
+the raw versus calibrated ECE and Brier, which measures how much of the gap a
+practitioner could recover.
 
 ## 6. Results
 
@@ -185,6 +191,18 @@ Calibration of the faithfulness scores (ECE/MCE/Brier, lower is better):
 | tfidf_cosine | 0.603 | 0.187 | [0.135, 0.344] | 0.928 | 0.265 |
 | lexical_overlap | 0.763 | 0.304 | [0.242, 0.391] | 1.000 | 0.281 |
 | novel_token | 0.779 | 0.321 | [0.258, 0.399] | 1.000 | 0.288 |
+
+Raw vs post-calibration ECE/Brier, with the calibration map fit out-of-fold
+(5-fold, seed 0) by isotonic regression and by Platt scaling:
+
+| Detector | Raw ECE | Isotonic ECE | Platt ECE | Raw Brier | Isotonic Brier |
+| --- | --- | --- | --- | --- | --- |
+| majority_constant | 0.000 | 0.000 | 0.000 | 0.250 | 0.250 |
+| lexical_overlap | 0.304 | 0.190 | 0.169 | 0.281 | 0.223 |
+| novel_token | 0.321 | 0.199 | 0.179 | 0.288 | 0.204 |
+| tfidf_cosine | 0.187 | 0.174 | 0.150 | 0.265 | 0.259 |
+| nli_entailment | 0.009 | 0.005 | 0.000 | 0.001 | 0.001 |
+| llm_judge | 0.029 | 0.017 | 0.020 | 0.011 | 0.010 |
 
 Oracle vs 5-fold cross-validated F1 (seed 0), with the optimism the oracle
 threshold hides:
@@ -274,7 +292,13 @@ confidence would be badly miscalibrated and would first need a calibration map
 (for example Platt scaling or isotonic regression) fit on a held-out split.
 `tfidf_cosine` has the lowest point ECE among the signal-carrying detectors
 despite the worst AUROC, but its interval overlaps the others, so it is a hint
-rather than a result.
+rather than a result. The miscalibration is a property of the raw scores and is
+partly fixable: an out-of-fold calibration map (isotonic or Platt) roughly halves
+the free detectors' ECE, taking `lexical_overlap` from 0.304 to about 0.17 and
+`novel_token` from 0.321 to about 0.18, and lowers their Brier score, while
+leaving the already-calibrated detectors untouched. The scores can therefore be
+turned into usable probabilities, though a residual ECE near 0.15 to 0.20 remains
+because fitting a reliable map out-of-fold on fifty examples only goes so far.
 
 Fifth, the reported F1 is mildly optimistic. Because its threshold is tuned on
 the same data it is scored on, the leaderboard F1 overstates the cross-validated
@@ -348,9 +372,9 @@ open and pushes the NLI and judge tiers off their perfect scores to reveal where
 they fail and whether they then diverge. Beyond that: measured dollar and latency
 costs for the model and API tiers (which would turn the "NLI dominates the judge"
 result from a per-tier statement into a priced one), more baselines in the
-mid-cost tier (embedding similarity, smaller NLI models), and recovering the
-free-tier calibration with a fitted calibration map so the cheap scores become
-usable probabilities.
+mid-cost tier (embedding similarity, smaller NLI models), and driving down the
+residual post-calibration ECE of the free detectors, which a larger dataset
+should help since the current maps are fit out-of-fold on only fifty examples.
 
 ## 10. Reproducibility
 
@@ -362,5 +386,5 @@ interval and p-value is identical across runs. The model-tier (NLI) and api-tier
 folds them into `RESULTS.md` with no model download and no API call, and the
 model and api numbers are reproducible offline like the rest. The
 test suite (`pytest`) covers the metrics, baselines, breakdown, frontier,
-agreement, bootstrap statistics, calibration, cross-validated operating points,
-and report generation offline.
+agreement, bootstrap statistics, calibration, post-hoc recalibration,
+cross-validated operating points, and report generation offline.

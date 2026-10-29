@@ -74,6 +74,13 @@ from .validation import (
     cross_val_operating_point,
     detector_validation,
 )
+from .recalibration import (
+    isotonic_fit,
+    platt_fit,
+    apply_map,
+    cross_val_recalibration,
+    detector_recalibration,
+)
 from .cost_model import (
     CostEstimate,
     estimate_api_cost,
@@ -107,6 +114,8 @@ __all__ = [
     "maximum_calibration_error", "calibration", "calibration_ci",
     "detector_calibration",
     "stratified_folds", "cross_val_operating_point", "detector_validation",
+    "isotonic_fit", "platt_fit", "apply_map", "cross_val_recalibration",
+    "detector_recalibration",
     "CostEstimate", "estimate_api_cost", "estimate_model_cost",
     "free_cost", "normalized_cost_scores",
 ]

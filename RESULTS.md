@@ -40,6 +40,19 @@ AUROC only asks whether a detector *ranks* faithful answers above hallucinated o
 | lexical_overlap | 0.304 | [0.242, 0.391] | 1.000 | 0.281 |
 | novel_token | 0.321 | [0.258, 0.399] | 1.000 | 0.288 |
 
+## Can the cheap scores be made into probabilities?
+
+The miscalibration above is a property of the raw scores, not a verdict on the detectors. This fits a post-hoc calibration map (isotonic, a monotone step fit, and Platt, a logistic fit) from score to observed faithful rate. The map is fit on training folds and applied to a held-out fold (5-fold, seed 0), so the post-calibration ECE/Brier is not measured on the data the map was tuned on. Lower is better.
+
+| Detector | Raw ECE | Isotonic ECE | Platt ECE | Raw Brier | Isotonic Brier |
+| --- | --- | --- | --- | --- | --- |
+| majority_constant | 0.000 | 0.000 | 0.000 | 0.250 | 0.250 |
+| lexical_overlap | 0.304 | 0.190 | 0.169 | 0.281 | 0.223 |
+| novel_token | 0.321 | 0.199 | 0.179 | 0.288 | 0.204 |
+| tfidf_cosine | 0.187 | 0.174 | 0.150 | 0.265 | 0.259 |
+| nli_entailment | 0.009 | 0.005 | 0.000 | 0.001 | 0.001 |
+| llm_judge | 0.029 | 0.017 | 0.020 | 0.011 | 0.010 |
+
 ## How optimistic is the F1?
 
 The leaderboard F1 uses each detector's F1-optimal threshold, tuned on the same data it is scored on, so it is an oracle operating point. The table below re-estimates F1 with 5-fold stratified cross-validation (seed 0): the threshold is chosen on the training folds and applied to the held-out fold, so every example is predicted by a threshold it did not help pick. The optimism column is how much the oracle F1 overstates the cross-validated one.

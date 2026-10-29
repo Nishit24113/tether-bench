@@ -16,6 +16,7 @@ from .frontier import build_frontier
 from .stats import detector_uncertainty
 from .calibration import detector_calibration, calibration_ci
 from .validation import detector_validation
+from .recalibration import cross_val_recalibration
 from .agreement import judge_agreement
 from .metrics import best_threshold
 
@@ -79,6 +80,25 @@ def calibration_markdown(cal: Dict[str, Any], labels, scores) -> str:
         ci = calibration_ci(labels, scores[name], "ece", n_bins=c["n_bins"])
         rows.append([name, f"{c['ece']:.3f}", f"[{ci['lo']:.3f}, {ci['hi']:.3f}]",
                      f"{c['mce']:.3f}", f"{c['brier']:.3f}"])
+    return _md_table(headers, rows)
+
+
+def recalibration_markdown(detectors: List[Detector], examples: List[Example]) -> str:
+    """
+    Raw vs post-calibration ECE/Brier per detector, cross-validated (k=5, seed 0).
+    Shows whether a fitted calibration map turns the raw scores into probabilities.
+    """
+    labels = [e.label for e in examples]
+    headers = ["Detector", "Raw ECE", "Isotonic ECE", "Platt ECE", "Raw Brier", "Isotonic Brier"]
+    rows = []
+    for d in detectors:
+        s = d.score_all(examples)
+        iso = cross_val_recalibration(labels, s, "isotonic")
+        pla = cross_val_recalibration(labels, s, "platt")
+        rows.append([
+            d.name, f"{iso['raw_ece']:.3f}", f"{iso['cal_ece']:.3f}", f"{pla['cal_ece']:.3f}",
+            f"{iso['raw_brier']:.3f}", f"{iso['cal_brier']:.3f}",
+        ])
     return _md_table(headers, rows)
 
 
@@ -214,6 +234,17 @@ def generate_report(
         "CI is a stratified bootstrap (2000 resamples, seed 0).",
         "",
         calibration_markdown(cal, labels, cal_scores),
+        "",
+        "## Can the cheap scores be made into probabilities?",
+        "",
+        "The miscalibration above is a property of the raw scores, not a verdict "
+        "on the detectors. This fits a post-hoc calibration map (isotonic, a "
+        "monotone step fit, and Platt, a logistic fit) from score to observed "
+        "faithful rate. The map is fit on training folds and applied to a "
+        "held-out fold (5-fold, seed 0), so the post-calibration ECE/Brier is not "
+        "measured on the data the map was tuned on. Lower is better.",
+        "",
+        recalibration_markdown(detectors, examples),
         "",
         "## How optimistic is the F1?",
         "",
