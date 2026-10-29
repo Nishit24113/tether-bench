@@ -17,6 +17,7 @@ from .stats import detector_uncertainty
 from .calibration import detector_calibration, calibration_ci
 from .validation import detector_validation
 from .recalibration import cross_val_recalibration
+from .ensemble import cross_val_stack
 from .agreement import judge_agreement
 from .metrics import best_threshold
 
@@ -80,6 +81,17 @@ def calibration_markdown(cal: Dict[str, Any], labels, scores) -> str:
         ci = calibration_ci(labels, scores[name], "ece", n_bins=c["n_bins"])
         rows.append([name, f"{c['ece']:.3f}", f"[{ci['lo']:.3f}, {ci['hi']:.3f}]",
                      f"{c['mce']:.3f}", f"{c['brier']:.3f}"])
+    return _md_table(headers, rows)
+
+
+def ensemble_markdown(stack: Dict[str, Any]) -> str:
+    """One-line comparison of the out-of-fold stacked combiner vs the best single."""
+    headers = ["Combination", "AUROC", "95% CI"]
+    lo, hi = stack["stack_ci"]
+    rows = [
+        ["stacked free detectors (logistic, out-of-fold)", f"{stack['stack_auroc']:.3f}", f"[{lo:.3f}, {hi:.3f}]"],
+        [f"best single ({stack['best_single']})", f"{stack['best_single_auroc']:.3f}", "-"],
+    ]
     return _md_table(headers, rows)
 
 
@@ -223,6 +235,32 @@ def generate_report(
         "",
         significance_markdown(unc),
         "",
+    ]
+
+    # Do the free signals combine to beat the best single free detector?
+    free_dets = [d for d in detectors if getattr(d, "cost", None) == "free"]
+    if len(free_dets) >= 2:
+        stack = cross_val_stack(free_dets, examples)
+        sig = "a significant" if stack["significant"] else "not a significant"
+        dlo, dhi = stack["diff_ci"]
+        parts += [
+            "## Do the free signals combine to beat the best single detector?",
+            "",
+            "A logistic combiner is stacked on the free detectors' scores and "
+            "evaluated out-of-fold (5-fold, seed 0), so its AUROC is not measured "
+            "on the data the combiner was trained on.",
+            "",
+            ensemble_markdown(stack),
+            "",
+            f"The stacked combiner's AUROC differs from the best single detector "
+            f"({stack['best_single']}) by {stack['diff']:+.3f} "
+            f"(95% CI [{dlo:+.3f}, {dhi:+.3f}], p = {stack['p_value']:.3f}), which is "
+            f"{sig} improvement. The free signals are largely redundant, so "
+            "combining them does not clear the free-tier ceiling.",
+            "",
+        ]
+
+    parts += [
         "## Are the scores trustworthy probabilities?",
         "",
         "AUROC only asks whether a detector *ranks* faithful answers above "

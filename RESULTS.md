@@ -27,6 +27,17 @@ Paired stratified bootstrap of the best detector (nli_entailment) against each o
 | tfidf_cosine | +0.397 | [+0.242, +0.565] | < 0.001 | yes | 50/50 |
 | majority_constant | +0.500 | [+0.500, +0.500] | < 0.001 | yes | 50/50 |
 
+## Do the free signals combine to beat the best single detector?
+
+A logistic combiner is stacked on the free detectors' scores and evaluated out-of-fold (5-fold, seed 0), so its AUROC is not measured on the data the combiner was trained on.
+
+| Combination | AUROC | 95% CI |
+| --- | --- | --- |
+| stacked free detectors (logistic, out-of-fold) | 0.726 | [0.566, 0.877] |
+| best single (novel_token) | 0.779 | - |
+
+The stacked combiner's AUROC differs from the best single detector (novel_token) by -0.053 (95% CI [-0.170, +0.050], p = 0.345), which is not a significant improvement. The free signals are largely redundant, so combining them does not clear the free-tier ceiling.
+
 ## Are the scores trustworthy probabilities?
 
 AUROC only asks whether a detector *ranks* faithful answers above hallucinated ones. Calibration asks whether a faithfulness score of p means the answer is faithful about p of the time. ECE is the count-weighted mean gap between predicted score and observed faithful rate across 10 bins (lower is better); MCE is the worst single bin; Brier is the mean squared error of the scores as probabilities. The ECE CI is a stratified bootstrap (2000 resamples, seed 0).

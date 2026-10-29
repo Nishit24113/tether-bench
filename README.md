@@ -138,6 +138,33 @@ unc["vs_best"]["lexical_overlap"]  # diff, lo, hi, p_value, significant, n_diffe
 `bootstrap_ci(labels, scores)` and `paired_bootstrap(labels, scores_a, scores_b)`
 work on raw score lists, so they apply just as well to cached NLI or judge scores.
 
+### Do the free signals combine to beat the best single detector?
+
+The free detectors look at overlapping surface signals, so it is worth asking
+whether combining them clears the free-tier ceiling. Tether stacks them with a
+logistic combiner, fit out-of-fold (5-fold, seed 0) so the combiner's AUROC is
+never measured on the data it was trained on:
+
+| Combination | AUROC | 95% CI |
+|-------------|-------|--------|
+| stacked free detectors (logistic, out-of-fold) | 0.726 | [0.566, 0.877] |
+| best single (`novel_token`) | 0.779 | - |
+
+The answer is no. The stack scores **below** the best single detector
+(difference -0.053, 95% CI [-0.170, +0.050], p = 0.345, not significant): the
+free signals are largely redundant (`novel_token` and `lexical_overlap` already
+agree on 47 of 50 examples, and TF-IDF is the weakest), so a trained combiner
+only overfits slightly at this sample size rather than finding new signal. You
+cannot reach the semantic tier by blending surface heuristics, which is the point
+of paying for NLI.
+
+```python
+from tether import load_sample, default_detectors, cross_val_stack
+
+examples = load_sample()
+cross_val_stack(default_detectors(examples), examples)  # stack vs best single, out-of-fold
+```
+
 ### Are the scores trustworthy probabilities?
 
 AUROC only measures *ranking*. A separate question is whether a faithfulness
@@ -445,7 +472,7 @@ exactly the kind of correction real cost numbers make to the frontier.
 
 ```bash
 pip install -e ".[dev]"
-pytest                          # 211 tests, all stdlib
+pytest                          # 219 tests, all stdlib
 python scripts/run_benchmark.py # prints the leaderboard above
 ```
 
@@ -477,6 +504,7 @@ tether/
   calibration.py     # reliability bins, Brier, ECE/MCE: are the scores real probabilities?
   validation.py      # k-fold cross-validated F1 vs oracle F1: how optimistic is the threshold?
   recalibration.py   # isotonic/Platt calibration maps: can the cheap scores become probabilities?
+  ensemble.py        # out-of-fold logistic stack of the free detectors: do they combine to win?
   baselines/         # majority, lexical, novel-token, tf-idf, nli, llm-judge
 data/sample.jsonl    # bundled labeled dataset (50 examples, runs offline), error-type annotated
 scripts/run_benchmark.py   # prints leaderboard + breakdown + frontier
@@ -487,7 +515,7 @@ out/judge.json       # cached LLM-judge (qwen38-27b) scores, folded into the rep
 PAPER.md                   # working paper draft
 RESULTS.md                 # generated results, cited by the paper
 COMPUTE.md                 # producing the model/api tiers on a GPU and caching them
-tests/               # 211 unit tests
+tests/               # 219 unit tests
 ```
 
 ## Roadmap
@@ -516,7 +544,8 @@ the free detectors rank well but are not calibrated probabilities while the NLI
 tier is; k-fold cross-validated operating points that quantify how much the
 oracle-threshold F1 overstates the honest held-out F1; post-hoc recalibration
 (isotonic and Platt maps, cross-validated) that roughly halves the free
-detectors' calibration error.
+detectors' calibration error; an out-of-fold logistic stack showing the free
+signals are redundant and do not combine to beat the best single detector.
 
 ## Reproducibility
 

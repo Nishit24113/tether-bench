@@ -81,6 +81,11 @@ from .recalibration import (
     cross_val_recalibration,
     detector_recalibration,
 )
+from .ensemble import (
+    logistic_fit,
+    stacked_scores,
+    cross_val_stack,
+)
 from .cost_model import (
     CostEstimate,
     estimate_api_cost,
@@ -116,6 +121,7 @@ __all__ = [
     "stratified_folds", "cross_val_operating_point", "detector_validation",
     "isotonic_fit", "platt_fit", "apply_map", "cross_val_recalibration",
     "detector_recalibration",
+    "logistic_fit", "stacked_scores", "cross_val_stack",
     "CostEstimate", "estimate_api_cost", "estimate_model_cost",
     "free_cost", "normalized_cost_scores",
 ]

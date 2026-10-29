@@ -181,6 +181,11 @@ detector, as the reference:
 | tfidf_cosine | +0.176 | [+0.040, +0.321] | 0.007 | yes | 49/50 |
 | majority_constant | +0.279 | [+0.135, +0.402] | < 0.001 | yes | 48/50 |
 
+A logistic combiner stacked on the free detectors and evaluated out-of-fold
+(5-fold, seed 0) does not beat the best single free detector: it reaches AUROC
+0.726 (95% CI [0.566, 0.877]) versus novel_token's 0.779, a difference of -0.053
+(95% CI [-0.170, +0.050], p = 0.345, not significant).
+
 Calibration of the faithfulness scores (ECE/MCE/Brier, lower is better):
 
 | Detector | AUROC | ECE | ECE 95% CI | MCE | Brier |
@@ -278,7 +283,11 @@ three answers. In contrast, `novel_token` beats `tfidf_cosine` by 0.176
 (p = 0.007) and the constant floor by 0.279 (p < 0.001). The single-detector
 intervals are wide too, 0.27 to 0.32 AUROC for each non-constant detector, so a
 claim that one cheap detector beats another by a few points needs a larger
-dataset than this one.
+dataset than this one. The redundancy also caps what combination can buy: a
+logistic stack of the free detectors, evaluated out-of-fold, does not beat the
+best single one (0.726 versus 0.779, p = 0.345), so the surface signals carry
+essentially one shared axis of information rather than complementary ones, and
+blending them does not reach the semantic tier.
 
 Fourth, ranking quality and calibration are different axes, and neither implies
 the other here. `majority_constant` has an ECE of 0.000, the best in the table,
@@ -387,4 +396,5 @@ folds them into `RESULTS.md` with no model download and no API call, and the
 model and api numbers are reproducible offline like the rest. The
 test suite (`pytest`) covers the metrics, baselines, breakdown, frontier,
 agreement, bootstrap statistics, calibration, post-hoc recalibration,
-cross-validated operating points, and report generation offline.
+cross-validated operating points, free-detector stacking, and report generation
+offline.
