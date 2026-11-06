@@ -268,6 +268,28 @@ val["novel_token"]["cv_f1"]          # pooled held-out F1
 val["novel_token"]["optimism_gap"]   # oracle F1 minus cross-validated F1
 ```
 
+## When it can abstain: risk and coverage
+
+AUROC and F1 assume the detector answers on every example. A deployed faithfulness
+check does not have to: it can answer the cases it is confident about and abstain
+on the rest, deferring those to a human or a more expensive judge. Tether ranks
+each prediction by how far its score sits from the threshold, sweeps coverage from
+full down to a single example, and reports the selective risk (the error rate on
+the covered examples) at each level. The area under that risk-coverage curve
+(AURC, lower is better) measures whether a detector's score is informative about
+its own correctness: a detector that concentrates its mistakes among its
+least-confident calls sheds error quickly as it abstains, so its AURC falls well
+below its overall error rate, while an uninformative one stays flat near it.
+
+```python
+from tether import load_sample, default_detectors, detector_selective
+
+examples = load_sample()
+sel = detector_selective(default_detectors(examples), examples)
+sel["nli_entailment"]["aurc"]                    # area under the risk-coverage curve
+sel["nli_entailment"]["selective_risk"]["0.75"]  # error answering the most-confident 75%
+```
+
 ## Error-type breakdown
 
 Every hallucinated example is annotated with the kind of error it contains, and

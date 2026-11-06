@@ -93,6 +93,13 @@ from .cost_model import (
     free_cost,
     normalized_cost_scores,
 )
+from .selective import (
+    RiskCoveragePoint,
+    risk_coverage_curve,
+    aurc,
+    selective_risk_at,
+    detector_selective,
+)
 
 __version__ = "0.1.0"
 
@@ -124,6 +131,8 @@ __all__ = [
     "logistic_fit", "stacked_scores", "cross_val_stack",
     "CostEstimate", "estimate_api_cost", "estimate_model_cost",
     "free_cost", "normalized_cost_scores",
+    "RiskCoveragePoint", "risk_coverage_curve", "aurc", "selective_risk_at",
+    "detector_selective",
 ]
 
 
