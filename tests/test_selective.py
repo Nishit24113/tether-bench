@@ -4,6 +4,7 @@ from tether.selective import (
     risk_coverage_curve,
     aurc,
     selective_risk_at,
+    coverage_at_risk,
     summary,
     RiskCoveragePoint,
 )
@@ -73,8 +74,9 @@ def test_informative_confidence_beats_uninformative():
 def test_summary_shape_and_keys():
     scores = [0.9, 0.8, 0.45, 0.1, 0.2, 0.3]
     out = summary(LABELS, scores, threshold=0.5)
-    assert set(out) == {"aurc", "full_coverage_risk", "selective_risk"}
+    assert set(out) == {"aurc", "full_coverage_risk", "selective_risk", "coverage_at_risk"}
     assert set(out["selective_risk"]) == {"1.00", "0.90", "0.75", "0.50"}
+    assert set(out["coverage_at_risk"]) == {"0.01", "0.05", "0.10"}
     assert out["full_coverage_risk"] == pytest.approx(1 / 6, abs=1e-6)
 
 
@@ -118,4 +120,37 @@ def test_detector_selective_keys_by_name_and_package_wiring():
     detectors = [_Stub("informative", [0.9, 0.8, 0.45, 0.1, 0.2, 0.3])]
     out = detector_selective(detectors, examples)
     assert "informative" in out
-    assert set(out["informative"]) == {"aurc", "full_coverage_risk", "selective_risk"}
+    assert set(out["informative"]) == {
+        "aurc", "full_coverage_risk", "selective_risk", "coverage_at_risk"
+    }
+
+
+def test_coverage_at_risk_perfect_detector_covers_everything():
+    scores = [0.9, 0.8, 0.7, 0.1, 0.2, 0.3]
+    assert coverage_at_risk(LABELS, scores, 0.0, threshold=0.5) == 1.0
+
+
+def test_coverage_at_risk_is_dual_of_selective_risk():
+    # the single error is the least-confident call, so we can answer the most
+    # confident 5/6 at zero risk, while full coverage pays 1/6.
+    scores = [0.9, 0.8, 0.45, 0.1, 0.2, 0.3]
+    assert coverage_at_risk(LABELS, scores, 0.0, threshold=0.5) == pytest.approx(5 / 6)
+    assert coverage_at_risk(LABELS, scores, 0.05, threshold=0.5) == pytest.approx(5 / 6)
+    # a budget at or above the full-coverage risk lets us answer everything
+    assert coverage_at_risk(LABELS, scores, 1 / 6, threshold=0.5) == 1.0
+
+
+def test_coverage_at_risk_zero_when_most_confident_is_wrong():
+    # the MOST-confident example is the wrong one (a faithful answer scored 0.05),
+    # so even a single answer breaches a zero budget -> coverage 0.
+    uninformative = [0.05, 0.8, 0.7, 0.1, 0.2, 0.3]
+    assert coverage_at_risk(LABELS, uninformative, 0.0, threshold=0.5) == 0.0
+
+
+def test_coverage_at_risk_validation_and_empty():
+    scores = [0.9, 0.8, 0.7, 0.1, 0.2, 0.3]
+    with pytest.raises(ValueError):
+        coverage_at_risk(LABELS, scores, -0.1, threshold=0.5)
+    with pytest.raises(ValueError):
+        coverage_at_risk(LABELS, scores, 1.5, threshold=0.5)
+    assert coverage_at_risk([], [], 0.1, threshold=0.5) == 0.0

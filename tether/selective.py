@@ -135,18 +135,52 @@ def selective_risk_at(
     return points[k - 1].risk
 
 
+def coverage_at_risk(
+    labels: List[int],
+    faith_scores: List[float],
+    max_risk: float,
+    threshold: Optional[float] = None,
+) -> float:
+    """
+    Maximum coverage achievable while keeping selective risk at or below ``max_risk``.
+
+    This is the operational dual of ``selective_risk_at``: instead of fixing how much
+    we answer and reading off the error we pay, we fix the error we can tolerate and
+    ask how much we can answer. "If I will auto-accept a faithfulness verdict only when
+    the error on accepted cases stays under max_risk, what fraction of cases can I
+    auto-accept and send the rest to a human?"
+
+    Because the empirical risk-coverage curve is not monotonic, we take the largest
+    coverage level whose selective risk is within budget, not merely the first one that
+    breaches it. Returns 0.0 if even the single most-confident prediction exceeds the
+    budget. max_risk is in [0, 1].
+    """
+    if not (0.0 <= max_risk <= 1.0):
+        raise ValueError("max_risk must be in [0, 1]")
+    points = risk_coverage_curve(labels, faith_scores, threshold)
+    best = 0.0
+    for p in points:
+        if p.risk <= max_risk and p.coverage > best:
+            best = p.coverage
+    return best
+
+
 def summary(
     labels: List[int],
     faith_scores: List[float],
     threshold: Optional[float] = None,
     coverages: Optional[List[float]] = None,
+    risk_budgets: Optional[List[float]] = None,
 ) -> Dict[str, Any]:
     """
     Compact risk-coverage summary: AURC, the risk at full coverage (the detector's
-    plain error rate), and the selective risk at a few target coverages.
+    plain error rate), the selective risk at a few target coverages, and the dual,
+    the coverage reachable under a few target risk budgets.
     """
     if coverages is None:
         coverages = [1.0, 0.9, 0.75, 0.5]
+    if risk_budgets is None:
+        risk_budgets = [0.01, 0.05, 0.10]
     points = risk_coverage_curve(labels, faith_scores, threshold)
     full_risk = points[-1].risk if points else 0.0
     return {
@@ -157,6 +191,12 @@ def summary(
                 selective_risk_at(labels, faith_scores, c, threshold), 6
             )
             for c in coverages
+        },
+        "coverage_at_risk": {
+            f"{r:.2f}": round(
+                coverage_at_risk(labels, faith_scores, r, threshold), 6
+            )
+            for r in risk_budgets
         },
     }
 
