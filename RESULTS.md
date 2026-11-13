@@ -77,6 +77,19 @@ The leaderboard F1 uses each detector's F1-optimal threshold, tuned on the same 
 | tfidf_cosine | 0.674 | 0.667 | +0.007 | 0.504 | 0.985 |
 | novel_token | 0.667 | 0.631 | +0.036 | 0.484 | 0.908 |
 
+## When can a detector abstain? (selective prediction)
+
+A deployed detector need not answer on every example: it can answer the cases it is most confident about — score farthest from its threshold — and abstain on the rest, deferring them to a human or a costlier check. AURC is the area under the risk-coverage curve (mean selective risk across coverage levels, lower is better); `Risk @C%` is the error rate when answering only the most-confident C% and abstaining on the rest; `Cov @risk<=r` is the dual — the largest fraction answerable while keeping selective risk within r. Each detector uses its own F1-optimal threshold, matching the leaderboard operating point.
+
+| Detector | AURC | Risk @100% | Risk @75% | Risk @50% | Cov @risk<=5% | Cov @risk<=10% |
+| --- | --- | --- | --- | --- | --- | --- |
+| llm_judge | 0.000 | 0.000 | 0.000 | 0.000 | 1.00 | 1.00 |
+| nli_entailment | 0.053 | 0.077 | 0.082 | 0.123 | 0.42 | 1.00 |
+| majority_constant | 0.470 | 0.500 | 0.490 | 0.385 | 0.00 | 0.00 |
+| lexical_overlap | 0.516 | 0.415 | 0.418 | 0.477 | 0.00 | 0.00 |
+| novel_token | 0.537 | 0.500 | 0.459 | 0.431 | 0.00 | 0.00 |
+| tfidf_cosine | 0.566 | 0.485 | 0.520 | 0.523 | 0.00 | 0.00 |
+
 ## Detection recall by error type
 
 Recall of hallucination detection, per annotated error type, at each detector's F1-optimal threshold.

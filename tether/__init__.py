@@ -45,6 +45,7 @@ from .report import (
     leaderboard_markdown,
     breakdown_markdown,
     frontier_markdown,
+    selective_markdown,
 )
 from .cache import (
     write_cache,
@@ -116,7 +117,7 @@ __all__ = [
     "build_frontier", "pareto_frontier", "format_frontier",
     "frontier_detectors", "cost_of", "COST_SCORE",
     "generate_report", "leaderboard_markdown", "breakdown_markdown",
-    "frontier_markdown",
+    "frontier_markdown", "selective_markdown",
     "write_cache", "read_cache", "run_and_cache",
     "PrecomputedDetector", "precomputed_from_cache",
     "validate_dataset", "dataset_report", "format_dataset_report",

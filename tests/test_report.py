@@ -6,7 +6,7 @@ determinism.
 from tether import (
     load_sample, default_detectors, run_benchmark, run_category_breakdown,
     build_frontier, generate_report, leaderboard_markdown, breakdown_markdown,
-    frontier_markdown,
+    frontier_markdown, selective_markdown, detector_selective,
 )
 
 
@@ -50,6 +50,19 @@ def test_frontier_markdown_marks_pareto():
     assert "yes" in md  # at least one Pareto-optimal row
 
 
+def test_selective_markdown_is_a_table_sorted_by_aurc():
+    detectors, examples = _bench()
+    sel = detector_selective(detectors, examples)
+    md = selective_markdown(sel)
+    lines = md.splitlines()
+    assert lines[0].startswith("| Detector | AURC |")
+    assert set(lines[1].replace(" ", "")) <= set("|-")  # separator row
+    assert len(lines) == 2 + len(sel)  # one row per detector
+    # ranked by AURC ascending (lower is better): the AURC column is non-decreasing
+    aurcs = [float(l.split("|")[2]) for l in lines[2:]]
+    assert aurcs == sorted(aurcs)
+
+
 # ---------------------------------------------------------------------------
 # Full report
 # ---------------------------------------------------------------------------
@@ -61,6 +74,7 @@ def test_generate_report_sections_present():
     assert "## Leaderboard" in report
     assert "## Detection recall by error type" in report
     assert "## Cost/accuracy frontier" in report
+    assert "## When can a detector abstain? (selective prediction)" in report
 
 
 def test_generate_report_is_deterministic():

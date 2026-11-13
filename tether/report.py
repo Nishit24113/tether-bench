@@ -13,6 +13,7 @@ from .data import Example, class_balance
 from .baselines.base import Detector
 from .harness import run_benchmark, run_category_breakdown
 from .frontier import build_frontier
+from .selective import detector_selective
 from .stats import detector_uncertainty
 from .calibration import detector_calibration, calibration_ci
 from .validation import detector_validation
@@ -190,6 +191,32 @@ def frontier_markdown(points: List[Dict[str, Any]]) -> str:
     return _md_table(headers, rows)
 
 
+def selective_markdown(sel: Dict[str, Any]) -> str:
+    """
+    Risk-coverage summary per detector, ordered by AURC (lower is better).
+
+    AURC is the area under the risk-coverage curve; `Risk @C%` is the error rate
+    when answering only the most-confident C% of examples and abstaining on the
+    rest; `Cov @risk<=r` is the dual — the largest fraction answerable while
+    keeping selective risk within r. Each detector is evaluated at its own
+    F1-optimal threshold, matching the leaderboard operating point.
+    """
+    headers = ["Detector", "AURC", "Risk @100%", "Risk @75%", "Risk @50%",
+               "Cov @risk<=5%", "Cov @risk<=10%"]
+    rows = []
+    for name, s in sorted(sel.items(), key=lambda kv: kv[1]["aurc"]):
+        rows.append([
+            name,
+            f"{s['aurc']:.3f}",
+            f"{s['full_coverage_risk']:.3f}",
+            f"{s['selective_risk']['0.75']:.3f}",
+            f"{s['selective_risk']['0.50']:.3f}",
+            f"{s['coverage_at_risk']['0.05']:.2f}",
+            f"{s['coverage_at_risk']['0.10']:.2f}",
+        ])
+    return _md_table(headers, rows)
+
+
 def generate_report(
     detectors: List[Detector],
     examples: List[Example],
@@ -220,6 +247,7 @@ def generate_report(
     unc = detector_uncertainty(detectors, examples)
     cal = detector_calibration(detectors, examples)
     val = detector_validation(detectors, examples)
+    sel = detector_selective(detectors, examples)
     labels = [e.label for e in examples]
     cal_scores = {d.name: d.score_all(examples) for d in detectors}
     bal = class_balance(examples)
@@ -318,6 +346,20 @@ def generate_report(
         "oracle F1 overstates the cross-validated one.",
         "",
         validation_markdown(val),
+        "",
+        "## When can a detector abstain? (selective prediction)",
+        "",
+        "A deployed detector need not answer on every example: it can answer the "
+        "cases it is most confident about — score farthest from its threshold — and "
+        "abstain on the rest, deferring them to a human or a costlier check. AURC "
+        "is the area under the risk-coverage curve (mean selective risk across "
+        "coverage levels, lower is better); `Risk @C%` is the error rate when "
+        "answering only the most-confident C% and abstaining on the rest; "
+        "`Cov @risk<=r` is the dual — the largest fraction answerable while keeping "
+        "selective risk within r. Each detector uses its own F1-optimal threshold, "
+        "matching the leaderboard operating point.",
+        "",
+        selective_markdown(sel),
         "",
         "## Detection recall by error type",
         "",
