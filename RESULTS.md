@@ -1,6 +1,6 @@
 # Tether — Results
 
-Dataset: 130 examples (65 faithful, 65 hallucinated).
+Dataset: 160 examples (80 faithful, 80 hallucinated).
 
 ## Leaderboard
 
@@ -9,11 +9,11 @@ Ranked by AUROC (threshold-free). Precision/recall/F1 are reported at each detec
 | Detector | Cost | AUROC | AUROC 95% CI | F1 | Precision | Recall | Accuracy |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | llm_judge | api | 1.000 | [1.000, 1.000] | 1.000 | 1.000 | 1.000 | 1.000 |
-| nli_entailment | model | 0.974 | [0.949, 0.991] | 0.927 | 0.877 | 0.985 | 0.923 |
-| lexical_overlap | free | 0.538 | [0.440, 0.640] | 0.690 | 0.550 | 0.923 | 0.585 |
-| novel_token | free | 0.534 | [0.436, 0.641] | 0.667 | 0.500 | 1.000 | 0.500 |
+| nli_entailment | model | 0.939 | [0.901, 0.969] | 0.886 | 0.812 | 0.975 | 0.875 |
+| lexical_overlap | free | 0.561 | [0.470, 0.653] | 0.691 | 0.547 | 0.938 | 0.581 |
+| novel_token | free | 0.551 | [0.464, 0.641] | 0.667 | 0.500 | 1.000 | 0.500 |
+| tfidf_cosine | free | 0.501 | [0.415, 0.591] | 0.678 | 0.513 | 1.000 | 0.525 |
 | majority_constant | free | 0.500 | [0.500, 0.500] | 0.667 | 0.500 | 1.000 | 0.500 |
-| tfidf_cosine | free | 0.453 | [0.356, 0.554] | 0.674 | 0.508 | 1.000 | 0.515 |
 
 ## Are the gaps real?
 
@@ -21,11 +21,11 @@ Paired stratified bootstrap of the best detector (llm_judge) against each other 
 
 | llm_judge vs | AUROC diff | 95% CI | p-value | Significant | Examples scored differently |
 | --- | --- | --- | --- | --- | --- |
-| nli_entailment | +0.026 | [+0.009, +0.051] | < 0.001 | yes | 130/130 |
-| lexical_overlap | +0.462 | [+0.359, +0.560] | < 0.001 | yes | 123/130 |
-| novel_token | +0.466 | [+0.359, +0.564] | < 0.001 | yes | 122/130 |
-| majority_constant | +0.500 | [+0.500, +0.500] | < 0.001 | yes | 130/130 |
-| tfidf_cosine | +0.547 | [+0.446, +0.644] | < 0.001 | yes | 129/130 |
+| nli_entailment | +0.061 | [+0.031, +0.099] | < 0.001 | yes | 160/160 |
+| lexical_overlap | +0.439 | [+0.347, +0.530] | < 0.001 | yes | 151/160 |
+| novel_token | +0.449 | [+0.359, +0.536] | < 0.001 | yes | 150/160 |
+| tfidf_cosine | +0.499 | [+0.409, +0.585] | < 0.001 | yes | 157/160 |
+| majority_constant | +0.500 | [+0.500, +0.500] | < 0.001 | yes | 160/160 |
 
 ## Do the free signals combine to beat the best single detector?
 
@@ -33,10 +33,10 @@ A logistic combiner is stacked on the free detectors' scores and evaluated out-o
 
 | Combination | AUROC | 95% CI |
 | --- | --- | --- |
-| stacked free detectors (logistic, out-of-fold) | 0.529 | [0.429, 0.628] |
-| best single (lexical_overlap) | 0.538 | - |
+| stacked free detectors (logistic, out-of-fold) | 0.495 | [0.403, 0.586] |
+| best single (lexical_overlap) | 0.561 | - |
 
-The stacked combiner's AUROC differs from the best single detector (lexical_overlap) by -0.009 (95% CI [-0.148, +0.127], p = 0.876), which is not a significant improvement. The free signals are largely redundant, so combining them does not clear the free-tier ceiling.
+The stacked combiner's AUROC differs from the best single detector (lexical_overlap) by -0.065 (95% CI [-0.160, +0.026], p = 0.180), which is not a significant improvement. The free signals are largely redundant, so combining them does not clear the free-tier ceiling.
 
 ## Are the scores trustworthy probabilities?
 
@@ -45,11 +45,11 @@ AUROC only asks whether a detector *ranks* faithful answers above hallucinated o
 | Detector | ECE | ECE 95% CI | MCE | Brier |
 | --- | --- | --- | --- | --- |
 | majority_constant | 0.000 | [0.000, 0.000] | 0.000 | 0.250 |
-| llm_judge | 0.022 | [0.014, 0.035] | 0.720 | 0.005 |
-| nli_entailment | 0.087 | [0.057, 0.136] | 0.563 | 0.071 |
-| tfidf_cosine | 0.231 | [0.162, 0.321] | 0.936 | 0.315 |
-| lexical_overlap | 0.296 | [0.239, 0.372] | 0.972 | 0.334 |
-| novel_token | 0.356 | [0.300, 0.421] | 0.972 | 0.364 |
+| llm_judge | 0.019 | [0.012, 0.029] | 0.720 | 0.004 |
+| nli_entailment | 0.126 | [0.089, 0.184] | 0.563 | 0.117 |
+| tfidf_cosine | 0.188 | [0.133, 0.272] | 0.937 | 0.298 |
+| lexical_overlap | 0.276 | [0.224, 0.341] | 0.972 | 0.318 |
+| novel_token | 0.329 | [0.280, 0.385] | 0.972 | 0.350 |
 
 ## Can the cheap scores be made into probabilities?
 
@@ -58,11 +58,11 @@ The miscalibration above is a property of the raw scores, not a verdict on the d
 | Detector | Raw ECE | Isotonic ECE | Platt ECE | Raw Brier | Isotonic Brier |
 | --- | --- | --- | --- | --- | --- |
 | majority_constant | 0.000 | 0.000 | 0.000 | 0.250 | 0.250 |
-| lexical_overlap | 0.296 | 0.065 | 0.150 | 0.334 | 0.248 |
-| novel_token | 0.356 | 0.082 | 0.136 | 0.364 | 0.268 |
-| tfidf_cosine | 0.231 | 0.112 | 0.073 | 0.315 | 0.261 |
-| nli_entailment | 0.087 | 0.058 | 0.054 | 0.071 | 0.062 |
-| llm_judge | 0.022 | 0.006 | 0.008 | 0.005 | 0.004 |
+| lexical_overlap | 0.276 | 0.085 | 0.023 | 0.318 | 0.249 |
+| novel_token | 0.329 | 0.053 | 0.065 | 0.350 | 0.255 |
+| tfidf_cosine | 0.188 | 0.069 | 0.050 | 0.298 | 0.250 |
+| nli_entailment | 0.126 | 0.064 | 0.048 | 0.117 | 0.102 |
+| llm_judge | 0.019 | 0.004 | 0.006 | 0.004 | 0.003 |
 
 ## How optimistic is the F1?
 
@@ -70,12 +70,12 @@ The leaderboard F1 uses each detector's F1-optimal threshold, tuned on the same 
 
 | Detector | Oracle F1 | CV F1 | Optimism | CV precision | CV recall |
 | --- | --- | --- | --- | --- | --- |
-| llm_judge | 1.000 | 0.992 | +0.008 | 0.985 | 1.000 |
-| nli_entailment | 0.927 | 0.927 | +0.000 | 0.877 | 0.985 |
-| lexical_overlap | 0.690 | 0.674 | +0.015 | 0.542 | 0.892 |
+| llm_judge | 1.000 | 0.994 | +0.006 | 0.988 | 1.000 |
+| nli_entailment | 0.886 | 0.875 | +0.011 | 0.802 | 0.963 |
+| lexical_overlap | 0.691 | 0.688 | +0.003 | 0.543 | 0.938 |
+| tfidf_cosine | 0.678 | 0.678 | +0.000 | 0.513 | 1.000 |
 | majority_constant | 0.667 | 0.667 | +0.000 | 0.500 | 1.000 |
-| tfidf_cosine | 0.674 | 0.667 | +0.007 | 0.504 | 0.985 |
-| novel_token | 0.667 | 0.631 | +0.036 | 0.484 | 0.908 |
+| novel_token | 0.667 | 0.655 | +0.011 | 0.497 | 0.963 |
 
 ## When can a detector abstain? (selective prediction)
 
@@ -84,11 +84,11 @@ A deployed detector need not answer on every example: it can answer the cases it
 | Detector | AURC | Risk @100% | Risk @75% | Risk @50% | Cov @risk<=5% | Cov @risk<=10% |
 | --- | --- | --- | --- | --- | --- | --- |
 | llm_judge | 0.000 | 0.000 | 0.000 | 0.000 | 1.00 | 1.00 |
-| nli_entailment | 0.053 | 0.077 | 0.082 | 0.123 | 0.42 | 1.00 |
-| majority_constant | 0.470 | 0.500 | 0.490 | 0.385 | 0.00 | 0.00 |
-| lexical_overlap | 0.516 | 0.415 | 0.418 | 0.477 | 0.00 | 0.00 |
-| novel_token | 0.537 | 0.500 | 0.459 | 0.431 | 0.00 | 0.00 |
-| tfidf_cosine | 0.566 | 0.485 | 0.520 | 0.523 | 0.00 | 0.00 |
+| nli_entailment | 0.094 | 0.125 | 0.133 | 0.175 | 0.29 | 0.40 |
+| majority_constant | 0.471 | 0.500 | 0.458 | 0.375 | 0.00 | 0.00 |
+| lexical_overlap | 0.489 | 0.419 | 0.400 | 0.463 | 0.00 | 0.00 |
+| novel_token | 0.509 | 0.500 | 0.475 | 0.438 | 0.00 | 0.00 |
+| tfidf_cosine | 0.519 | 0.475 | 0.508 | 0.487 | 0.00 | 0.00 |
 
 ## Detection recall by error type
 
@@ -96,14 +96,14 @@ Recall of hallucination detection, per annotated error type, at each detector's 
 
 | Error type | majority_constant | lexical_overlap | novel_token | tfidf_cosine | nli_entailment | llm_judge |
 | --- | --- | --- | --- | --- | --- | --- |
-| comparison | 1.00 | 0.75 | 1.00 | 1.00 | 1.00 | 1.00 |
-| contradiction | 1.00 | 0.89 | 1.00 | 1.00 | 1.00 | 1.00 |
-| distractor | 1.00 | 0.33 | 1.00 | 1.00 | 1.00 | 1.00 |
-| entity_swap | 1.00 | 0.92 | 1.00 | 1.00 | 1.00 | 1.00 |
+| comparison | 1.00 | 0.83 | 1.00 | 1.00 | 1.00 | 1.00 |
+| contradiction | 1.00 | 0.91 | 1.00 | 1.00 | 1.00 | 1.00 |
+| distractor | 1.00 | 0.50 | 1.00 | 1.00 | 1.00 | 1.00 |
+| entity_swap | 1.00 | 0.93 | 1.00 | 1.00 | 1.00 | 1.00 |
 | multi_hop | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
-| numeric | 1.00 | 1.00 | 1.00 | 1.00 | 0.95 | 1.00 |
+| numeric | 1.00 | 1.00 | 1.00 | 1.00 | 0.96 | 1.00 |
 | temporal | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
-| unsupported_addition | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| unsupported_addition | 1.00 | 1.00 | 1.00 | 1.00 | 0.92 | 1.00 |
 
 ## Cost/accuracy frontier
 
@@ -111,11 +111,11 @@ Quality axis = auroc. Cost is a relative per-tier score (free 0.0, model 0.3, ap
 
 | Detector | Cost tier | Cost | Quality | Pareto |
 | --- | --- | --- | --- | --- |
-| lexical_overlap | free | 0.00 | 0.538 | yes |
-| novel_token | free | 0.00 | 0.534 |  |
+| lexical_overlap | free | 0.00 | 0.561 | yes |
+| novel_token | free | 0.00 | 0.551 |  |
+| tfidf_cosine | free | 0.00 | 0.501 |  |
 | majority_constant | free | 0.00 | 0.500 |  |
-| tfidf_cosine | free | 0.00 | 0.453 |  |
-| nli_entailment | model | 0.30 | 0.974 | yes |
+| nli_entailment | model | 0.30 | 0.939 | yes |
 | llm_judge | api | 1.00 | 1.000 | yes |
 
 ## How well do the cheap detectors agree with the judge?
@@ -124,8 +124,8 @@ Tether's thesis is that a cheap detector is useful insofar as it agrees with the
 
 | Detector vs judge | Agreement | Cohen kappa | Judge-only catches | Cheap-only flags |
 | --- | --- | --- | --- | --- |
-| nli_entailment | 0.915 | 0.830 | 2 | 9 |
-| lexical_overlap | 0.592 | 0.176 | 5 | 48 |
-| tfidf_cosine | 0.523 | 0.032 | 0 | 62 |
-| majority_constant | 0.508 | 0.000 | 0 | 64 |
-| novel_token | 0.508 | 0.000 | 0 | 64 |
+| nli_entailment | 0.869 | 0.737 | 3 | 18 |
+| lexical_overlap | 0.588 | 0.168 | 5 | 61 |
+| tfidf_cosine | 0.531 | 0.051 | 0 | 75 |
+| majority_constant | 0.506 | 0.000 | 0 | 79 |
+| novel_token | 0.506 | 0.000 | 0 | 79 |
